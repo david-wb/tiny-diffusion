@@ -50,16 +50,51 @@ where
 
 Thus, the probability of any given state $x_t$ given a starting state $x_0$ is
 ```math
-    p(x_t | x_0) = \mathcal{N}(x_t; \sqrt{\bar{\alpha}_t}x_{0}, (1 - \bar{\alpha}_t) I).
+    q(x_t | x_0) = \mathcal{N}(x_t; \sqrt{\bar{\alpha}_t}x_{0}, (1 - \bar{\alpha}_t) I).
 ```
 
-By Bayes' rule,
-```math
-    p(x_0 | x_t) = \frac{p(x_t | x_0)p(x_0)}{p(x_t)}
-```
-Our goal here is to learn a model with parameters $\theta$ such that the log-likelihood of our images $x_0$ is maximized. We know from variational inference that
+
+## Reminder: Variational Inference for MLE
+
+Our overal goal is to learn the denoising process. In other words we want to find the optimal parameters $\theta$ to maximize
 
 ```math
+p_\theta(x_0 | x_t) 
+```
+for all $x_0, x_t$. 
+
+We can do this by maximizing the overall likelihood of the data
+```math
+\theta^{*} = \arg\max_{\theta}\mathbb{E}_{x_0}[p_\theta(x_0)].
+```
+
+
+We know from variational inference that
+
+```math
+\begin{align*}
+\log p_\theta(x_0) &= \text{ELBO} + \text{KL}(q(x_t) || p_\theta(x_t | x_0)) \\
+&\ge \text{ELBO}
+\end{align*}
+```
+where 
+```math
+\begin{align*}
+\text{ELBO} &= \mathbb{E}_{x_t\sim q(x_t|x_0)}[\log p_\theta(x_0, x_t)] - \mathbb{E}_{x_t \sim q(x_t|x_0)}[\log q(x_t)] \\
+&= \mathbb{E}_{x_t\sim q(x_t|x_0)}[\log \left(p_\theta(x_0 | x_t)p(x_t)\right)] - \mathbb{E}_{x_t \sim q(x_t|x_0)}[q(x_t)] \\
+&= \mathbb{E}_{x_t\sim q(x_t|x_0)}[\log p_\theta(x_0 | x_t)] + \mathbb{E}_{x_t\sim q(x_t|x_0)}[\log p(x_t)] - \mathbb{E}_{x_t \sim q(x_t|x_0)}[\log q(x_t)]
+\end{align*}
+```
+The last two terms are constants with respect to $\theta$, so our final objective becomes
+
+```math
+\begin{align*}
+J(\theta) &= \mathbb{E}_{x_0}\left[\mathbb{E}_{x_t\sim q(x_t|x_0)}[\log p_\theta(x_0 | x_t)]\right]
+\end{align*}
+```
+
+This means that all we have to do is train a probabilistic model, parameterized by $\theta$, that takes a noisy sample $x_t$ as input, and produces a distribution (mean and variance) over denoised samples $x_0$ output. The next denoised sample can be drawn at random from this output distribution.
+<!-- ```math
 \begin{align*}
 \log p(x) &=\text{KL}(q(z)∣∣p(z∣x)) − \mathbb{E}_{q(z)}\left[\log q(z)− \log p(x,z)
 \right] \\
@@ -68,10 +103,11 @@ Our goal here is to learn a model with parameters $\theta$ such that the log-lik
 \end{align*}
  ```
 
-Substituting $x=x_0$ and $z = x_t$, we get
+Letting $z = x_t$ and $q(z) = p(x_t | x_0)$ we have
 ```math
 \begin{align*}
-\log p(x_0) &\ge \mathbb{E}_{q}\left[\log q(x_t)− \log p(x_0, x_t)\right] \\
-&\ge \mathbb{E}_{q}\left[\log q(x_t)− \log p(x_0, x_t)
+\log p(x_0) &\ge \mathbb{E}_{p(x_t | x_0)}\left[\log p(x_t | x_0) − \log p(x_0, x_t)\right] \\
+&= \mathbb{E}_{p(x_t | x_0)}\left[\log p(x_t | x_0) − \log(p(x_0 | x_t)p(x_t))\right] \\
+&= \mathbb{E}_{p(x_t | x_0)}\left[\log p(x_t | x_0) − \log(p(x_0 | x_t)p(x_t))\right] \\
 \end{align*}
- ```
+ ``` -->
