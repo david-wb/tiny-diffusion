@@ -172,84 +172,10 @@ q(x_{i-1}\mid x_i, x_0) &= \frac{q(x_{i}\mid x_{i-1}, x_0)q(x_{i-1} \mid x_0)}{q
 \end{align*}
 ```
 
-Since these are diagonal gaussians, the result is also a gaussian with mean and variance
-...
+Here is the strategy. First we will derive the joint Gaussian distribution $q(x_i, x_{i-1}\mid x_0)$. Then we will use the conditional Gaussian formula to derive the mean and variance of $q(x_i \mid x_{i-1}, x_0)$, which is also Gaussian.
 
-<!-- ```math
+```math
 \begin{align*}
-\mu &= \frac{\sqrt{\alpha}_{i}\sqrt{\bar{\alpha}_{i-1}}}{\sqrt{\bar{\alpha}_i}}x_{i-1}
+q(x_{i-1}, x_i \mid x_0) &= ...
 \end{align*}
 ```
-and variance
-```math
-\begin{align*}
-\sigma^2 &= \frac{\sqrt{\alpha}_{i}\sqrt{\bar{\alpha}_{i-1}}}{\sqrt{\bar{\alpha}_i}}x_{i-1}
-\end{align*}
-``` -->
-
-<!-- Let us now simplify this distribution.
-
-```math
-\begin{align*}
-\log q(x_{i-1}\mid x_i, x_0) &= \log q(x_{i}\mid x_{i-1})
-+ \log q(x_{i-1} \mid x_0)
-- q(x_{i}\mid x_0)
-\end{align*}
-```
-
-Proceeding term-by-term, we have
-
-```math
-\begin{align*}
-\log q(x_{i}\mid x_{i-1})
-&= -\frac{1}{2(1 - \alpha_{i-1})}\lVert x_i - \sqrt{\alpha_i} x_{i-1} \rVert^2 + C
-\end{align*}
-```
-
-Where C is a constant with respect to $\theta$. Likewise
-
-```math
-\begin{align*}
-\log q(x_{i-1}\mid x_{0})
-&= -\frac{1}{2(1 - \bar{\alpha}_{i-1})}
-\lVert x_{i-1} - \sqrt{\bar{\alpha}_{i-1}}x_{0} \rVert^2 + C
-\end{align*}
-```
-
-And for the last term
-
-```math
-\begin{align*}
-\log q(x_{i}\mid x_{0})
-&= -\frac{1}{2(1 - \bar{\alpha}_i)}
-\lVert x_{i} - \sqrt{\bar{\alpha}_i}x_{0} \rVert^2 + C
-\end{align*}
-```
-
-Substituting these back in, we get
-
-```math
-\begin{align*}
-\log q(x_{i-1}\mid x_i, x_0) &= \log q(x_{i}\mid x_{i-1}) + \log q(x_{i-1} \mid x_0) - q(x_{i}\mid x_0) \\
-&= -\frac{1}{2(1 - \alpha_{i})}\lVert x_i - \sqrt{\alpha_{i}} x_{i-1} \rVert^2 \\
-&\quad- \frac{1}{2(1 - \bar{\alpha}_{i-1})}\lVert x_{i-1} - \sqrt{\bar{\alpha}_{i-1}}x_{0} \rVert^2 \\
-&\quad+ \frac{1}{2(1 - \bar{\alpha}_i)}\lVert x_{i} - \sqrt{\bar{\alpha}_i}x_{0} \rVert^2 + C \\
-&=
-    -\frac{1}{2(1 - \alpha_{i})}
-    \left(
-        x_i^2 - 2\sqrt{\alpha_i}x_i x_{i-1} + \alpha_i x_{i-1}^2
-    \right) \\
-&\quad
-    -\frac{1}{2(1 - \bar{\alpha}_{i-1})}
-    \left(
-        x_{i-1}^2 - 2\sqrt{\bar{\alpha}_{i-1}}x_{i-1} x_{0} + \bar{\alpha}_{i-1}x_{0}^2
-    \right) \\
-&\quad
-    +\frac{1}{2(1 - \bar{\alpha}_{i})}
-    \left(
-        x_i^2 - 2\sqrt{\bar{\alpha}_{i}}x_i x_{0} + \bar{\alpha}_{i}x_{0}^2
-    \right) \\
-&\quad + C \\
-&= \frac{x_i^2}{2}\left(\frac{1}{1 - \bar{\alpha}_i} - \frac{1}{1 - \alpha_{i}}\right)
-\end{align*}
-``` -->
