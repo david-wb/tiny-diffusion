@@ -96,7 +96,7 @@ The functions $\mu_\theta(x_i, i)$ and $\Sigma_{\theta}(x_i, i)$ represent a par
 As we will see, we can learn the parameters $\theta$ by maximising the likelihood of the data
 
 ```math
-\mathbb{E}_{x_0}[p_\theta(x_0)] = \mathbb{E}_{x_0}\left[\int p_\theta(x_0, x_1, \ldots x_t) d\mathbf{x}_{1:t}\right]
+\mathbb{E}_{x_0}[p_\theta(x_0)] = \mathbb{E}_{x_0}\left[\int p_\theta(x_0, x_1, \ldots, x_t) d\mathbf{x}_{1:t}\right]
 ```
 
 Our training objective is thus to find the optional paraemters $\theta^{*}$:
@@ -143,7 +143,9 @@ Expanding the term inside the expectation we get
 &= \log \frac{p(x_t)}{\log q(x_t\mid x_0)} + \sum_{i=2}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)} + \log p_\theta(x_0\mid x_1) & \text{(because $q(x_0\mid x_1,x_0) = 1$)}
 \end{align*}
 ```
+
 Plugging this back into the ELBO gives
+
 ```math
 \begin{align*}
 \text{ELBO} &= \mathbb{E}_{z \sim q(\cdot\mid x_0)}
@@ -153,3 +155,98 @@ Plugging this back into the ELBO gives
 &= \text{KL}(q(x_t\mid x_0), p(x_t)) + \sum_{i=2}^{t}\text{KL}(q(x_{i-1}\mid x_i, x_0), p_\theta(x_{i-1}\mid x_i)) + \log p_\theta(x_0\mid x_1)
 \end{align*}
 ```
+
+Note that
+
+```math
+\begin{align*}
+q(x_{i-1}\mid x_i, x_0) &= \frac{q(x_{i}\mid x_{i-1}, x_0)q(x_{i-1} \mid x_0)}{q(x_{i}\mid x_0)} \\
+&= \frac{q(x_{i}\mid x_{i-1})q(x_{i-1} \mid x_0)}{q(x_{i}\mid x_0)} \\
+&= \frac{
+    \mathcal{N}(x_{i}; \sqrt{\alpha}_{i}x_{i-1}, (1 - \alpha_{i}) I)
+    \mathcal{N}(x_{i-1}; \sqrt{\bar{\alpha}_{i-1}}x_{0}, (1 - \bar{\alpha}_{i-1}) I)
+}{\mathcal{N}(x_i; \sqrt{\bar{\alpha}_i}x_{0}, (1 - \bar{\alpha}_i) I)}
+\end{align*}
+```
+
+Since these are diagonal gaussians, the result is also a gaussian with mean and variance
+...
+
+<!-- ```math
+\begin{align*}
+\mu &= \frac{\sqrt{\alpha}_{i}\sqrt{\bar{\alpha}_{i-1}}}{\sqrt{\bar{\alpha}_i}}x_{i-1}
+\end{align*}
+```
+and variance
+```math
+\begin{align*}
+\sigma^2 &= \frac{\sqrt{\alpha}_{i}\sqrt{\bar{\alpha}_{i-1}}}{\sqrt{\bar{\alpha}_i}}x_{i-1}
+\end{align*}
+``` -->
+
+<!-- Let us now simplify this distribution.
+
+```math
+\begin{align*}
+\log q(x_{i-1}\mid x_i, x_0) &= \log q(x_{i}\mid x_{i-1})
++ \log q(x_{i-1} \mid x_0)
+- q(x_{i}\mid x_0)
+\end{align*}
+```
+
+Proceeding term-by-term, we have
+
+```math
+\begin{align*}
+\log q(x_{i}\mid x_{i-1})
+&= -\frac{1}{2(1 - \alpha_{i-1})}\lVert x_i - \sqrt{\alpha_i} x_{i-1} \rVert^2 + C
+\end{align*}
+```
+
+Where C is a constant with respect to $\theta$. Likewise
+
+```math
+\begin{align*}
+\log q(x_{i-1}\mid x_{0})
+&= -\frac{1}{2(1 - \bar{\alpha}_{i-1})}
+\lVert x_{i-1} - \sqrt{\bar{\alpha}_{i-1}}x_{0} \rVert^2 + C
+\end{align*}
+```
+
+And for the last term
+
+```math
+\begin{align*}
+\log q(x_{i}\mid x_{0})
+&= -\frac{1}{2(1 - \bar{\alpha}_i)}
+\lVert x_{i} - \sqrt{\bar{\alpha}_i}x_{0} \rVert^2 + C
+\end{align*}
+```
+
+Substituting these back in, we get
+
+```math
+\begin{align*}
+\log q(x_{i-1}\mid x_i, x_0) &= \log q(x_{i}\mid x_{i-1}) + \log q(x_{i-1} \mid x_0) - q(x_{i}\mid x_0) \\
+&= -\frac{1}{2(1 - \alpha_{i})}\lVert x_i - \sqrt{\alpha_{i}} x_{i-1} \rVert^2 \\
+&\quad- \frac{1}{2(1 - \bar{\alpha}_{i-1})}\lVert x_{i-1} - \sqrt{\bar{\alpha}_{i-1}}x_{0} \rVert^2 \\
+&\quad+ \frac{1}{2(1 - \bar{\alpha}_i)}\lVert x_{i} - \sqrt{\bar{\alpha}_i}x_{0} \rVert^2 + C \\
+&=
+    -\frac{1}{2(1 - \alpha_{i})}
+    \left(
+        x_i^2 - 2\sqrt{\alpha_i}x_i x_{i-1} + \alpha_i x_{i-1}^2
+    \right) \\
+&\quad
+    -\frac{1}{2(1 - \bar{\alpha}_{i-1})}
+    \left(
+        x_{i-1}^2 - 2\sqrt{\bar{\alpha}_{i-1}}x_{i-1} x_{0} + \bar{\alpha}_{i-1}x_{0}^2
+    \right) \\
+&\quad
+    +\frac{1}{2(1 - \bar{\alpha}_{i})}
+    \left(
+        x_i^2 - 2\sqrt{\bar{\alpha}_{i}}x_i x_{0} + \bar{\alpha}_{i}x_{0}^2
+    \right) \\
+&\quad + C \\
+&= \frac{x_i^2}{2}\left(\frac{1}{1 - \bar{\alpha}_i} - \frac{1}{1 - \alpha_{i}}\right)
+\end{align*}
+``` -->
