@@ -140,8 +140,8 @@ Expanding the term inside the ELBO expectation we get
 + \sum_{i=1}^{t}\log q(x_{i-1}\mid x_0) - \log q(x_i\mid x_0) & \\
 &= \log p(x_t) + \sum_{i=1}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)}
 - \log q(x_t\mid x_0) & \\
-&= \log \frac{p(x_t)}{\log q(x_t\mid x_0)} + \sum_{i=1}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)} & \\
-&= \log \frac{p(x_t)}{\log q(x_t\mid x_0)} + \sum_{i=2}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)} + \log p_\theta(x_0\mid x_1) & q(x_0\mid x_1,x_0) = 1
+&= \log \frac{p(x_t)}{q(x_t\mid x_0)} + \sum_{i=1}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)} & \\
+&= \log \frac{p(x_t)}{q(x_t\mid x_0)} + \sum_{i=2}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)} + \log p_\theta(x_0\mid x_1) & q(x_0\mid x_1,x_0) = 1
 \end{align*}
 ```
 
@@ -151,7 +151,7 @@ Plugging this back into the ELBO gives
 \begin{align*}
 \text{ELBO} &= \mathbb{E}_{z \sim q(\cdot\mid x_0)}
 \left[
-    \log \frac{p(x_t)}{\log q(x_t\mid x_0)} + \sum_{i=2}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)} + \log p_\theta(x_0\mid x_1)
+    \log \frac{p(x_t)}{q(x_t\mid x_0)} + \sum_{i=2}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)} + \log p_\theta(x_0\mid x_1)
 \right] \\
 &= \text{KL}(q(x_t\mid x_0), p(x_t)) + \sum_{i=2}^{t}\text{KL}(q(x_{i-1}\mid x_i, x_0), p_\theta(x_{i-1}\mid x_i)) + \mathbb{E}_{z \sim q(\cdot\mid x_0)}[\log p_\theta(x_0\mid x_1)]
 \end{align*}
