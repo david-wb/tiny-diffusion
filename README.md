@@ -114,16 +114,17 @@ Letting $z = \{x_1, ... ,x_t\}$ for brevity, we know from variational inference 
 \end{align*}
 ```
 
-Maximizing ELBO increases that data likelihood _and_ makes $p_\theta(z \mid  x_0)$ closer to the true posterior $q(z\mid x_0)$.
 where
 
 ```math
 \begin{align*}
-\text{ELBO} &= \mathbb{E}_{z \sim q(\cdot\mid x_0)}\left[\log \frac{p_\theta(x_0, z)}{q(z\mid x_0)}\right]
+\text{ELBO} &= \mathbb{E}_{z \sim q(\cdot\mid x_0)}\left[\log \frac{p_\theta(x_0, z)}{q(z\mid x_0)}\right].
 \end{align*}
 ```
 
-Expanding the term inside the expectation we get
+Because the KL term is positive, maximizing ELBO increases the data likelihood _and_ makes $p_\theta(z \mid  x_0)$ closer to the true posterior $q(z\mid x_0)$.
+
+Expanding the term inside the ELBO expectation we get
 
 ```math
 \begin{align*}
@@ -152,11 +153,13 @@ Plugging this back into the ELBO gives
 \left[
     \log \frac{p(x_t)}{\log q(x_t\mid x_0)} + \sum_{i=2}^{t}\log \frac{p_\theta(x_{i-1}\mid x_i)}{q(x_{i-1}\mid x_i, x_0)} + \log p_\theta(x_0\mid x_1)
 \right] \\
-&= \text{KL}(q(x_t\mid x_0), p(x_t)) + \sum_{i=2}^{t}\text{KL}(q(x_{i-1}\mid x_i, x_0), p_\theta(x_{i-1}\mid x_i)) + \log p_\theta(x_0\mid x_1)
+&= \text{KL}(q(x_t\mid x_0), p(x_t)) + \sum_{i=2}^{t}\text{KL}(q(x_{i-1}\mid x_i, x_0), p_\theta(x_{i-1}\mid x_i)) + \mathbb{E}_{z \sim q(\cdot\mid x_0)}[\log p_\theta(x_0\mid x_1)]
 \end{align*}
 ```
 
-Note that
+Note that the first term is constant with respect to $\theta$ and can therefore be ignored for the purpose of optimization.
+
+For the terms inside the summation, it's clear that we want to make $p_\theta(x_{i-1}\mid x_i)$ as close as possible to $q(x_{i-1}\mid x_i, x_0)$. We therefore need derive the distribution $q(x_{i-1}\mid x_i, x_0)$, which is a backward conditional probability of the forward process Markov chain. We can then use the mean and variance of this distribution as training targets for our model $p_\theta(x_{i-1}\mid x_i)$.
 
 ```math
 \begin{align*}
