@@ -46,18 +46,19 @@ The last two terms can be combined into a single distribution, because
 \end{align*}
 ```
 
-Thus, $x_t$ can be expressed in closed form as a function of $x_0$ and $\epsilon_0$.
+Thus, the marginal distribution of $x_t$ given $x_0$ can be expressed in closed form as a function of $x_0$ and a unit-noise variable $\epsilon_0$.
 
 ```math
 \begin{align*}
 x_t &= \sqrt{\alpha_t}x_{t-1} + \sqrt{1 - \alpha_t}\epsilon_t \\
  &= \sqrt{\alpha_t\alpha_{t-1}}x_{t-2} + \sqrt{1 - \alpha_t\alpha_{t-1}}\epsilon_{t-2} \\
  &= \ldots \\
- &= \sqrt{\bar{\alpha}_t}x_{0} + \sqrt{1 - \bar{\alpha}_t}\epsilon_{0}
+ &= \sqrt{\bar{\alpha}_t}x_{0} + \sqrt{1 - \bar{\alpha}_t}\epsilon_{0} \\
+&= \sqrt{\bar{\alpha}_t}x_{0} + \sqrt{1 - \bar{\alpha}_t}\epsilon
 \end{align*}
 ```
 
-where
+for some unit noise $\epsilon$ and where
 
 ```math
     \bar{\alpha}_t = \prod_{i=1}^{t}\alpha_i.
@@ -91,15 +92,15 @@ p_\theta(x_{i-1}\mid x_i) = \mathcal{N}(x_{i-1}; \mu_{\theta}(x_i, i), \Sigma_{\
 
 The functions $\mu_\theta(x_i, i)$ and $\Sigma_{\theta}(x_i, i)$ represent a parametric model, typically a neural network, which takes as inputs an image $x_i$ and the associated timestep $i$, and outputs the mean and variance of a Gaussian distribution for the denoised sample $x_{i-1}$. The objective is to learn the parameters $\theta$ of this model.
 
-## Reminder: Variational Inference for MLE
+## Variational Inference for MLE
 
-As we will see, we can learn the parameters $\theta$ by maximising the likelihood of the data
+As we will see, we can learn the reverse process parameters $\theta$ by maximising the likelihood of the data
 
 ```math
 \mathbb{E}_{x_0}[p_\theta(x_0)] = \mathbb{E}_{x_0}\left[\int p_\theta(x_0, x_1, \ldots, x_t) d\mathbf{x}_{1:t}\right]
 ```
 
-Our training objective is thus to find the optional paraemters $\theta^{*}$:
+Our training objective is thus to find the optional parameters $\theta^{*}$:
 
 ```math
 \theta^{*} = \arg\max_{\theta}\mathbb{E}_{x_0}[p_\theta(x_0)].
@@ -161,21 +162,108 @@ Note that the first term is constant with respect to $\theta$ and can therefore 
 
 For the terms inside the summation, it's clear that we want to make $p_\theta(x_{i-1}\mid x_i)$ as close as possible to $q(x_{i-1}\mid x_i, x_0)$. We therefore need derive the distribution $q(x_{i-1}\mid x_i, x_0)$, which is a backward conditional probability of the forward process Markov chain. We can then use the mean and variance of this distribution as training targets for our model $p_\theta(x_{i-1}\mid x_i)$.
 
-```math
-\begin{align*}
-q(x_{i-1}\mid x_i, x_0) &= \frac{q(x_{i}\mid x_{i-1}, x_0)q(x_{i-1} \mid x_0)}{q(x_{i}\mid x_0)} \\
-&= \frac{q(x_{i}\mid x_{i-1})q(x_{i-1} \mid x_0)}{q(x_{i}\mid x_0)} \\
-&= \frac{
-    \mathcal{N}(x_{i}; \sqrt{\alpha}_{i}x_{i-1}, (1 - \alpha_{i}) I)
-    \mathcal{N}(x_{i-1}; \sqrt{\bar{\alpha}_{i-1}}x_{0}, (1 - \bar{\alpha}_{i-1}) I)
-}{\mathcal{N}(x_i; \sqrt{\bar{\alpha}_i}x_{0}, (1 - \bar{\alpha}_i) I)}
-\end{align*}
-```
-
+## Deriving Forward Process Backward Conditional Probabilities
 Here is the strategy. First we will derive the joint Gaussian distribution $q(x_i, x_{i-1}\mid x_0)$. Then we will use the conditional Gaussian formula to derive the mean and variance of $q(x_i \mid x_{i-1}, x_0)$, which is also Gaussian.
 
+We know that for two multi-variate Gaussian random variables $\mathbf{X}$ and $\mathbf{Y}$, their joint distribution is given by
+```math
+\begin{bmatrix}
+\mathbf{X} \\
+\mathbf{Y}
+\end{bmatrix}
+\sim \mathcal{N} \left(
+\begin{bmatrix}
+\boldsymbol{\mu}_X \\
+\boldsymbol{\mu}_Y
+\end{bmatrix},
+\begin{bmatrix}
+\boldsymbol{\Sigma}_X & \boldsymbol{\Sigma}_{XY} \\
+\boldsymbol{\Sigma}_{XY}^\top & \boldsymbol{\Sigma}_Y
+\end{bmatrix}
+\right)
+```
+
+Thus we can substitute $\mathbf{X} \sim q(x_i \mid x_0)$ and $\mathbf{Y} \sim q(x_{i-1} \mid x_0)$ and get
+```math
+q(x_i, x_{i-1} \mid x_0) = \mathcal{N} \left(
+\begin{bmatrix}
+\sqrt{\bar{\alpha}_{i}}x_{0} \\
+\sqrt{\bar{\alpha}_{i-1}}x_{0}
+\end{bmatrix},
+\begin{bmatrix}
+(1 - \bar{\alpha}_{i})I & \boldsymbol{\Sigma}_{XY} \\
+\boldsymbol{\Sigma}_{XY}^\top & (1 - \bar{\alpha}_{i-1})I
+\end{bmatrix}
+\right)
+```
+Now we just need to find $\boldsymbol{\Sigma}_{XY}$ which we can get from the definition of covariance. For brevity I will drop the notation $\mid x_0$, but remember we are conditioning on $x_0$. 
+
+First, let's use the expressions for $x_i$ and $x_{i-1}$ given $x_0$ in terms of random noise variables $\epsilon_t$.
+$$
+x_{i-1} = \sqrt{\bar{\alpha}_{i-1}}x_{0} + \sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0} 
+$$
+
+For $x_i$, remember that is is dependent $x_{i-1}$, so we must use the single-step expression:
 ```math
 \begin{align*}
-q(x_{i-1}, x_i \mid x_0) &= ...
+x_{i} &= \sqrt{\alpha_i}x_{i-1} + \sqrt{1 - \alpha_i}\epsilon_{i-1} \\
+&= \sqrt{\alpha_i}(\sqrt{\bar{\alpha}_{i-1}}x_{0} + \sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0}) + \sqrt{1 - \alpha_i}\epsilon_{i-1} \\
+&= \sqrt{\bar{\alpha}_{i}}x_{0} + \sqrt{\alpha_i (1 - \bar{\alpha}_{i-1})}\epsilon_{0} + \sqrt{1 - \alpha_i}\epsilon_{i-1}
+\end{align*}
+```
+Okay, so now we have $x_i$ and $x_{i-1}$ expressed in terms of two **independent** random noise variables $\epsilon_{i-1}$ and $\epsilon_0$. Plugging these into the definition for covariance, we get
+
+```math
+\begin{align*}
+\boldsymbol{\Sigma}_{XY} &= \mathbb{E}_q\left[(x_i - \mathbb{E}_q[x_i])(x_{i-1} - \mathbb{E}_q[x_{i-1}])\right] \\
+&= \mathbb{E}_q
+\left[
+    (x_i - \sqrt{\bar{\alpha}_{i}}x_0)(x_{i-1} - \sqrt{\bar{\alpha}_{i-1}}x_0)
+\right] \\
+&= \mathbb{E}_q
+\left[
+    (\sqrt{\bar{\alpha}_{i}}x_{0} + \sqrt{\alpha_i (1 - \bar{\alpha}_{i-1})}\epsilon_{0} + \sqrt{1 - \alpha_i}\epsilon_{i-1} - \sqrt{\bar{\alpha}_{i}}x_0)
+    (\sqrt{\bar{\alpha}_{i-1}}x_{0} + \sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0}  - \sqrt{\bar{\alpha}_{i-1}}x_0)
+\right] \\
+&= \mathbb{E}_q
+\left[
+    (\sqrt{\alpha_i (1 - \bar{\alpha}_{i-1})}\epsilon_{0} + \sqrt{1 - \alpha_i}\epsilon_{i-1})
+    (\sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0})
+\right] \\
+&= \mathbb{E}_q
+\left[
+    \sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})\epsilon_{0}^2 + \sqrt{1 - \alpha_i}\sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{i-1}\epsilon_{0}
+\right] \\
+&= \sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})I  + 0 \\
+&= \sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})I
+\end{align*}
+```
+And now finally we have the following joint distribution for $x_i$ and $x_{i-1}$ conditioned on $x_0$:
+
+```math
+q(x_i, x_{i-1} \mid x_0) = \mathcal{N} \left(
+\begin{bmatrix}
+\sqrt{\bar{\alpha}_{i}}x_{0} \\
+\sqrt{\bar{\alpha}_{i-1}}x_{0}
+\end{bmatrix},
+\begin{bmatrix}
+(1 - \bar{\alpha}_{i})I & \sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})I \\
+\sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})I & (1 - \bar{\alpha}_{i-1})I
+\end{bmatrix}
+\right)
+```
+
+### Conditional Gaussian Formula
+
+Now that we have the joint distribution, we can use the [conditional Gaussian formula](https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions) to derive $q(x_{i-1} \mid x_i, x_0)$.
+
+The formula tells us that
+
+```math
+\begin{align*}
+\boldsymbol{\mu}_{Y\mid X} &= \boldsymbol{\mu}_{Y} + \boldsymbol{\Sigma}_{YX} \boldsymbol{\Sigma}_{XX}^{-1}(\mathbf{X} - \boldsymbol{\mu}_{X})  \\
+&= \sqrt{\bar{\alpha}_{i-1}}x_{0} + \frac{\sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}(x_{i} - \sqrt{\bar{\alpha}_{i}}x_{0})  \\
+&= \left(\sqrt{\bar{\alpha}_{i-1}} + \sqrt{\bar{\alpha}_{i}}\sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i})}{(1 - \bar{\alpha}_{i-1})}\right)x_0 
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i}
 \end{align*}
 ```
