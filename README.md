@@ -261,9 +261,26 @@ The formula tells us that
 
 ```math
 \begin{align*}
-\boldsymbol{\mu}_{Y\mid X} &= \boldsymbol{\mu}_{Y} + \boldsymbol{\Sigma}_{YX} \boldsymbol{\Sigma}_{XX}^{-1}(\mathbf{X} - \boldsymbol{\mu}_{X})  \\
+\boldsymbol{\mu}_{Y\mid X} &= \boldsymbol{\mu}_{Y} + \boldsymbol{\Sigma}_{YX} \boldsymbol{\Sigma}_{X}^{-1}(\mathbf{X} - \boldsymbol{\mu}_{X})  \\
 &= \sqrt{\bar{\alpha}_{i-1}}x_{0} + \frac{\sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}(x_{i} - \sqrt{\bar{\alpha}_{i}}x_{0})  \\
-&= \left(\sqrt{\bar{\alpha}_{i-1}} + \sqrt{\bar{\alpha}_{i}}\sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i})}{(1 - \bar{\alpha}_{i-1})}\right)x_0 
-+ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i}
+&= \left(\sqrt{\bar{\alpha}_{i-1}} - \sqrt{\bar{\alpha}_{i}}\sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_0 
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
+&= \sqrt{\bar{\alpha}_{i-1}}\left(1 - \alpha_{i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_0 
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
+&= \sqrt{\bar{\alpha}_{i-1}}\left(\frac{1 - \bar{\alpha}_{i} - \alpha_i +\bar{\alpha}_{i}}{1 - \bar{\alpha}_{i}}\right)x_0 
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
+&= \boxed{\frac{\sqrt{\bar{\alpha}_{i-1}}}{1 - \bar{\alpha}_{i}}(1 - \alpha_i)x_0 
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i}}
+\end{align*}
+```
+and for the variance
+```math
+\begin{align*}
+\boldsymbol{\Sigma}_{Y\mid X} &= \boldsymbol{\Sigma}_{Y} -\boldsymbol{\Sigma}_{YX} \boldsymbol{\Sigma}_{X}^{-1}\boldsymbol{\Sigma}_{XY}  \\
+&= (1 - \bar{\alpha}_{i-1})I - \sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})\frac{I}{(1 - \bar{\alpha}_{i})}\sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1}) \\
+&= (1 - \bar{\alpha}_{i-1})I - \frac{\alpha_i(1 - \bar{\alpha}_{i-1})^2}{(1 - \bar{\alpha}_{i})}I \\
+&= (1 - \bar{\alpha}_{i-1})\left(1 - \frac{\alpha_i(1 - \bar{\alpha}_{i-1})}{1 - \bar{\alpha}_i}\right)I \\
+&= (1 - \bar{\alpha}_{i-1})\left(\frac{1 - \bar{\alpha}_i - \alpha_i + \bar{\alpha}_{i}}{1 - \bar{\alpha}_i}\right)I \\
+&= \boxed{\frac{1 - \bar{\alpha}_{i-1}}{1 - \bar{\alpha}_i}\left(1 - \alpha_i\right)I}
 \end{align*}
 ```
