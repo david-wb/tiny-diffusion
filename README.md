@@ -275,7 +275,7 @@ Substituting $X = x_i$ and $Y = x_{i-1}$, the formula tells us that
 
 ```math
 \begin{align*}
-\mu_{Y\mid X} &= \mu_{Y}  \boldsymbol{\Sigma}_{X}^{-1}(\boldsymbol{X} - \mu_{X})  \\
+\mu_{Y\mid X} &= \mu_{Y} + \boldsymbol{\Sigma}_{YX}\boldsymbol{\Sigma}_{X}^{-1}(\boldsymbol{X} - \mu_{X})  \\
 &= \sqrt{\bar{\alpha}_{i-1}}x_{0} + \frac{\sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}(x_{i} - \sqrt{\bar{\alpha}_{i}}x_{0})  \\
 &= \left(\sqrt{\bar{\alpha}_{i-1}} - \sqrt{\bar{\alpha}_{i}}\sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_0
 + \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
