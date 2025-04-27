@@ -87,37 +87,42 @@ Also, by rearranging, we can equivalently write $x_0$ in terms of $x_t$ and a no
 x_0 = \frac{1}{\sqrt{\bar{\alpha}_t}}(x_t - \sqrt{1 - \bar{\alpha}_t}\epsilon)
 ```
 
-# Denoising Process
+# Reverse Process
 
-The denoising process, also called the "reverse" process, is modeled by another Markov chain which iteratively removes noise from a sample $x_t$ to recover the original image $x_0$:
+The reverse "denoising" process, is defined by another Markov chain which iteratively removes noise from a sample $x_t$ to recover the original image $x_0$. The reverse process defines the joint distribution of all states as
 
 ```math
-p_\theta(x_0, x_1, \ldots, x_t) = p(x_t)\prod_{i=0}^{t}p_\theta(x_{i-1}\mid x_i)
+p_\theta(x_0, x_1, \ldots, x_t) \coloneqq p(x_t)\prod_{i=0}^{t}p_\theta(x_{i-1}\mid x_i)
 ```
 
-The starting point $x_t$ is assumed to be random Gaussian noise:
+
+where the Markov transitions are learned Gaussians with mean and variance parameterized by $\theta$:
 
 ```math
-    p(x_t) = \mathcal{N}(x_t; 0, I).
+p_\theta(x_{i-1}\mid x_i) = \mathcal{N}(x_{i-1}; \mu_{\theta}(x_i, i), \Sigma_{\theta}(x_i, i))
 ```
 
-The transitions are learned Gaussians with mean and variance parameterized by $\theta$:
+and starting state $x_t$ is assumed to be random Gaussian noise:
 
 ```math
-p_\theta(x_{i-1}\mid x_i) = \mathcal{N}(x_{i-1}; \mu_{\theta}(x_i, i), \Sigma_{\theta}(x_i, i)).
+    p(x_t) \coloneqq \mathcal{N}(x_t; 0, I).
 ```
 
 The functions $\mu_\theta(x_i, i)$ and $\Sigma_{\theta}(x_i, i)$ represent a parametric model, typically a neural network, which takes as inputs an image $x_i$ and the associated timestep $i$, and outputs the mean and variance of a Gaussian distribution for the denoised sample $x_{i-1}$. The objective is to learn the parameters $\theta$ of this model.
 
 ## Variational Inference for MLE
 
-As we will see, we can learn the reverse process parameters $\theta$ by maximising the likelihood of the data
+As we will see, we can learn the reverse process parameters $\theta$ by maximising the likelihood of the data, and using the forward process as the variational distribution.
+
+The data likelihood is given by
 
 ```math
-\mathbb{E}_{x_0}[p_\theta(x_0)] = \mathbb{E}_{x_0}\left[\int p_\theta(x_0, x_1, \ldots, x_t) d\mathbf{x}_{1:t}\right]
+\mathbb{E}_{x_0\sim \Omega}[p_\theta(x_0)] = \mathbb{E}_{x_0}\left[\int p_\theta(x_0, x_1, \ldots, x_t) d\mathbf{x}_{1:t}\right]
 ```
 
-Our training objective is thus to find the optional parameters $\theta^{*}$:
+where $x_0\sim\Omega$ represents our distribution of images. 
+
+The training objective is to find the optimal parameters $\theta^{*}$ such that
 
 ```math
 \theta^{*} = \arg\max_{\theta}\mathbb{E}_{x_0}[p_\theta(x_0)].
@@ -177,7 +182,7 @@ Plugging this back into the ELBO gives
 
 Note that the first term is constant with respect to $\theta$ and can therefore be ignored for the purpose of optimization.
 
-For the terms inside the summation, it's clear that we want to make $p_\theta(x_{i-1}\mid x_i)$ as close as possible to $q(x_{i-1}\mid x_i, x_0)$. We therefore need derive the distribution $q(x_{i-1}\mid x_i, x_0)$, which is a backward conditional probability of the forward process Markov chain. We can then use the mean and variance of this distribution as training targets for our model $p_\theta(x_{i-1}\mid x_i)$.
+For the terms inside the summation, it's clear that we want to make $p_\theta(x_{i-1}\mid x_i)$ as close as possible to $q(x_{i-1}\mid x_i, x_0)$. We therefore need derive the distribution $q(x_{i-1}\mid x_i, x_0)$, which is sometimes called a "backward conditional probability" of the forward process Markov chain. We can then use the mean and variance of this distribution as training targets for our model $p_\theta(x_{i-1}\mid x_i)$.
 
 ## Deriving Forward Process Backward Conditional Probabilities
 
@@ -219,13 +224,13 @@ q(x_i, x_{i-1} \mid x_0) = \mathcal{N} \left(
 
 Now we just need to find $\boldsymbol{\Sigma}_{XY}$ which we can get from the definition of covariance. For brevity I will drop the notation $\mid x_0$, but remember we are conditioning on $x_0$.
 
-First, let's use the expressions for $x_i$ and $x_{i-1}$ given $x_0$ in terms of random noise variables $\epsilon_t$.
+First, we can leverage our expressions for $x_i$ and $x_{i-1}$ in terms of a random noise variable $\epsilon$:
 
 ```math
 x_{i-1} = \sqrt{\bar{\alpha}_{i-1}}x_{0} + \sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0}
 ```
 
-For $x_i$, remember that is is dependent $x_{i-1}$, so we must use the single-step expression:
+For $x_i$, we must remember that is is dependent $x_{i-1}$, and therefore use the single-step expression:
 
 ```math
 \begin{align*}
