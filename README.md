@@ -72,9 +72,9 @@ Thus, the probability of any given state $x_t$ given a starting state $x_0$ is
 ```
 
 Also, by rearranging, we can equivalently write $x_0$ in terms of $x_t$ and a noise term
-$$
+```
 x_0 = \frac{1}{\sqrt{\bar{\alpha}_t}}(x_t - \sqrt{1 - \bar{\alpha}_t}\epsilon)
-$$
+```
 
 # Denoising Process
 
@@ -210,9 +210,9 @@ Now we just need to find $\boldsymbol{\Sigma}_{XY}$ which we can get from the de
 
 First, let's use the expressions for $x_i$ and $x_{i-1}$ given $x_0$ in terms of random noise variables $\epsilon_t$.
 
-$$
+```
 x_{i-1} = \sqrt{\bar{\alpha}_{i-1}}x_{0} + \sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0}
-$$
+```
 
 For $x_i$, remember that is is dependent $x_{i-1}$, so we must use the single-step expression:
 
@@ -317,20 +317,20 @@ The KL divergence of two isotropic normal distributions, $p$ and $q$, with varia
 
 Let's define our target mean and variance as 
 
-$$
+```math
 \tilde{\mu}(x_i, x_0) = \frac{\sqrt{\bar{\alpha}_{i-1}}}{1 - \bar{\alpha}_{i}}(1 - \alpha_i)x_0
 + \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i}
-$$
+```
 
-$$
+```math
 \tilde{\sigma}^2(i) = \frac{1 - \bar{\alpha}_{i-1}}{1 - \bar{\alpha}_i}\left(1 - \alpha_i\right)
-$$
+```
 
 If we define our model such that
 
-$$
+```math
 p_\theta(x_{i-1}\mid x_i) = \mathcal{N}(x_{t}; \mu_\theta(x_{i}, i)), \tilde{\sigma}^2(i)I)
-$$
+```
 
 then our objective becomes
 
@@ -367,18 +367,18 @@ This means we can reparameterize the mean of our denoising model $\mu_\theta$ as
 ## Denoising Procedure
 In order to "denoise" an image $x_i$ by one step, i.e. draw a sample from $p_\theta(x_{i-1}\mid x_i)$, we first sample
 
-$$
+```math
 \epsilon \sim \epsilon_\theta(x_i, i)
-$$
+```
 and
-$$
+```math
 z \sim \mathcal{N}(\cdot; 0, \tilde{\sigma}^2(i)I)
-$$
+```
 and then compute
-$$
+```math
 x_{i-1} \coloneqq \frac{1 - \alpha_i}{\sqrt{\alpha_i}\sqrt{1 - \bar{\alpha}_{i}}}\epsilon
 + \frac{1}{\sqrt{\alpha_i}}x_i + z
-$$
+```
 and repeat for $x_{i-2}$ and so on down to $x_0$.
 
 ## Training Procedure
@@ -386,25 +386,25 @@ and repeat for $x_{i-2}$ and so on down to $x_0$.
 The last part is to learn the model for $\epsilon_\theta(x_i, i)$. We can do this as follows.
 
 First select an image $x_0$ and time index $i$ at random 
-$$
+```math
 x_0 \sim \Omega_{\text{images}}
-$$
-$$
+```
+```math
 i \sim [1, T]
-$$
+```
 Then draw a random unit noise variable
-$$
+```math
 \epsilon \sim \mathcal{N}(\cdot; 1, I)
-$$
+```
 and compute
-$$
+```math
 x_i := \sqrt{\bar{\alpha}_i}x_{0} + \sqrt{1 - \bar{\alpha}_i}\epsilon
-$$
+```
 This gives us our "diffused" sample $x_i$ and the total noise that produced it from $x_0$.
 
 Finally, all we have to do is minimize the loss
 
-$$
+```math
 L(\theta) = \|\epsilon_\theta(x_i, i) - \epsilon\|^2
-$$
+```
 via gradient descent.
