@@ -210,7 +210,7 @@ Now we just need to find $\boldsymbol{\Sigma}_{XY}$ which we can get from the de
 
 First, let's use the expressions for $x_i$ and $x_{i-1}$ given $x_0$ in terms of random noise variables $\epsilon_t$.
 
-```
+```math
 x_{i-1} = \sqrt{\bar{\alpha}_{i-1}}x_{0} + \sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0}
 ```
 
@@ -275,7 +275,6 @@ Substituting $X = x_i$ and $Y = x_{i-1}$, the formula tells us that
 
 ```math
 \begin{align*}
-\boldsymbol{\mu}_{Y\mid X} &= \boldsymbol{\mu}_{Y} + \boldsymbol{\Sigma}_{YX} \boldsymbol{\Sigma}_{X}^{-1}(\mathbf{X} - \boldsymbol{\mu}_{X})  \\
 &= \sqrt{\bar{\alpha}_{i-1}}x_{0} + \frac{\sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}(x_{i} - \sqrt{\bar{\alpha}_{i}}x_{0})  \\
 &= \left(\sqrt{\bar{\alpha}_{i-1}} - \sqrt{\bar{\alpha}_{i}}\sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_0
 + \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
