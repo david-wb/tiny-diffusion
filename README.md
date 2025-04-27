@@ -365,21 +365,21 @@ If we expand the target mean as using the closed form expression for $x_0$ in te
 This means we can reparameterize the mean of our denoising model $\mu_\theta$ as a function of $x_i$ and a learned noise term, and instead of predicting the mean directly, we can predict the noise instead.
 
 ## Denoising Procedure
-In order to "denoise" an image $x_i$ by one step, i.e. draw a sample from $p_\theta(x_{i-1}\mid x_i)$, we first sample
+In order to "denoise" an image $x_i$ by one step, i.e. draw a sample from $p_\theta(x_{i-1}\mid x_i)$, we first predict the noise term
 
 ```math
-\epsilon \sim \epsilon_\theta(x_i, i)
+\epsilon \coloneqq \epsilon_\theta(x_i, i)
 ```
-and
+then we sample a random noise $z$ to account for the variance of the target distribution
 ```math
 z \sim \mathcal{N}(\cdot; 0, \tilde{\sigma}^2(i)I)
 ```
-and then compute
+and finally we compute
 ```math
 x_{i-1} \coloneqq \frac{1 - \alpha_i}{\sqrt{\alpha_i}\sqrt{1 - \bar{\alpha}_{i}}}\epsilon
 + \frac{1}{\sqrt{\alpha_i}}x_i + z
 ```
-and repeat for $x_{i-2}$ and so on down to $x_0$.
+and repeat for $x_{i-2}$ and so on down to $x_1$.
 
 ## Training Procedure
 
