@@ -292,7 +292,7 @@ and for the variance
 
 ```math
 \begin{align*}
-\boldsymbol{\Sigma}_{Y\mid X} &= \boldsymbol{\Sigma}_{Y} -\boldsymbol{\Sigma}_{YX} \boldsymbol{\Sigma}_{X}^{-1}\boldsymbol{\Sigma}_{XY}  \\
+\Sigma_{Y\mid X} &= \Sigma_{Y} - \Sigma_{YX}\Sigma_{X}^{-1}\Sigma_{XY}  \\
 &= (1 - \bar{\alpha}_{i-1})I - \sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})\frac{I}{(1 - \bar{\alpha}_{i})}\sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1}) \\
 &= (1 - \bar{\alpha}_{i-1})I - \frac{\alpha_i(1 - \bar{\alpha}_{i-1})^2}{(1 - \bar{\alpha}_{i})}I \\
 &= (1 - \bar{\alpha}_{i-1})\left(1 - \frac{\alpha_i(1 - \bar{\alpha}_{i-1})}{1 - \bar{\alpha}_i}\right)I \\
