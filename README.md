@@ -11,13 +11,13 @@ diffused image samples are given by
 q(x_1, \ldots, x_t \mid  x_0) = \prod_{i=1}^{t}q(x_i \mid  x_{i-1}).
 ```
 
-The transition probabilities are Gaussians
+where transition probabilities are isotropic Gaussians of the form
 
 ```math
 q(x_t \mid  x_{t-1}) = \mathcal{N}(x_{t}; \sqrt{\alpha_{t}} x_{t-1}, (1 - \alpha_t) I).
 ```
 
-We can equivalently write
+We can equivalently write the state transitions as a scaled value of the previous state added to a random noise term:
 
 ```math
 x_t = \sqrt{\alpha_t}x_{t-1} + \sqrt{1 - \alpha_t}\epsilon_{t-1}
@@ -25,8 +25,8 @@ x_t = \sqrt{\alpha_t}x_{t-1} + \sqrt{1 - \alpha_t}\epsilon_{t-1}
 
 where each $\epsilon_t \sim \mathcal{N}(\cdot; 0,  I)$ is unit noise.
 
-Observe that
-
+An important property of the diffusion process is that it is possible to express the distribution $q(x_t | x_0)$ in closed form
+without, which means we can directly sample $x_t$ given $x_0$ without going through all of the intermediate states. To see this, first note that
 ```math
 \begin{align*}
 x_t &= \sqrt{\alpha_t}x_{t-1} + \sqrt{1 - \alpha_t}\epsilon_t \\
@@ -34,14 +34,14 @@ x_t &= \sqrt{\alpha_t}x_{t-1} + \sqrt{1 - \alpha_t}\epsilon_t \\
 \end{align*}
 ```
 
-The last two terms can be combined into a single distribution, because
+The because $\epsilon_{t-2}$ and $\epsilon_{t-1}$ are independent and identically distributed random variables, the last two terms can be combined into a single distribution
 
 ```math
 \begin{align*}
 \sqrt{\alpha_t}\sqrt{1 - \alpha_{t-1}}\epsilon_{t-2} + \sqrt{1-\alpha_t}\epsilon_{t-1}
-&\sim \mathcal{N}(0, \alpha_t(1-\alpha_{t-1},)) + \mathcal{N}(0, (1-\alpha_t)) \\
-&\sim \mathcal{N}(0, \alpha_t(1-\alpha_{t-1}) + (1-\alpha_t))) \\
-&\sim \mathcal{N}(0, 1 - \alpha_t\alpha_{t-2}) \\
+&\sim \mathcal{N}(0, \alpha_t(1-\alpha_{t-1})I) + \mathcal{N}(0, (1-\alpha_t)I) \\
+&\sim \mathcal{N}(0, \alpha_t(1-\alpha_{t-1})I + (1-\alpha_t)I) \\
+&\sim \mathcal{N}(0, (1 - \alpha_t\alpha_{t-1})I) \\
 &\sim \sqrt{1 - \alpha_t\alpha_{t-1}}\epsilon_{t-2}
 \end{align*}
 ```
@@ -84,7 +84,7 @@ The starting point $x_t$ is assumed to be random Gaussian noise:
     p(x_t) = \mathcal{N}(x_t; 0, I).
 ```
 
-The transitions are learned Gaussians parameterized by $\theta$:
+The transitions are learned Gaussians with mean and variance parameterized by $\theta$:
 
 ```math
 p_\theta(x_{i-1}\mid x_i) = \mathcal{N}(x_{i-1}; \mu_{\theta}(x_i, i), \Sigma_{\theta}(x_i, i)).
