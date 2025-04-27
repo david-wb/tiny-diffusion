@@ -1,11 +1,18 @@
 # Tiny Diffusion
 
-A minimal implementation of a denoising diffusion model for image generation.
+This repo contains bare-minimum implementation of a denoising diffusion model for image generation. I found some of the math in the original [DDPM paper](https://arxiv.org/abs/2006.11239) a bit tough to follow since a few derivation steps were omitted for conciseness. I explain all of the mathematical details here, taking care to not leave out any potentially confusing steps, to make things clearer for myself and hopefully others.
 
-# Diffusion Process
+# Intro
 
-The "diffusion" process is a Markov chain that adds Gaussian noise to a given image $x_0$ at each step. The posterior distribution of the
-diffused image samples are given by
+<div align="center">
+  <img src="static/diffusion.png" alt="Diffusion" />
+</div>
+
+Diffusion models work by a "forward process" which gradually adds random noise to a sample until it is indistinguishable from pure gaussian noise, and a "reverse process" which does the exact opposite, starting from a sample of pure noise and gradually recovering the original sample. These processes are illustrated in the figure above.
+
+# Forward Process
+
+The forward "diffusion" process is defined as Markov chain that adds Gaussian noise to a given image $x_0$ at each step. The posterior distribution of the diffused image samples given the input image is given by
 
 ```math
 q(x_1, \ldots, x_t \mid  x_0) = \prod_{i=1}^{t}q(x_i \mid  x_{i-1}).
@@ -14,8 +21,13 @@ q(x_1, \ldots, x_t \mid  x_0) = \prod_{i=1}^{t}q(x_i \mid  x_{i-1}).
 where transition probabilities are isotropic Gaussians of the form
 
 ```math
-q(x_t \mid  x_{t-1}) = \mathcal{N}(x_{t}; \sqrt{\alpha_{t}} x_{t-1}, (1 - \alpha_t) I).
+q(x_t \mid  x_{t-1}) = \mathcal{N}(x_{t}; \sqrt{\alpha_{t}} x_{t-1}, (1 - \alpha_t) I). 
 ```
+
+Isotropic means the covariance is matrix is diagonal, with all diagonal entries being equal. 
+The $\alpha_t$ terms represent a variance schedule which controls the rate of diffusion. Each $\alpha_t$ is in the range $(0, 1)$ and $1 - \alpha_t$ is typically a small constant in the range $[10^{-4}, 0.02]$, for example. The y also ensure the distribution of 
+$x_t$ converges to unit Gaussian noise in the limit.
+
 
 We can equivalently write the state transitions as a scaled value of the previous state added to a random noise term:
 
@@ -25,8 +37,7 @@ x_t = \sqrt{\alpha_t}x_{t-1} + \sqrt{1 - \alpha_t}\epsilon_{t-1}
 
 where each $\epsilon_t \sim \mathcal{N}(\cdot; 0,  I)$ is unit noise.
 
-An important property of the diffusion process is that it is possible to express the distribution $q(x_t | x_0)$ in closed form
-without, which means we can directly sample $x_t$ given $x_0$ without going through all of the intermediate states. To see this, first note that
+An important property of the forward process is that it is possible to express the distribution $q(x_t | x_0)$ in closed form, which means we can directly sample $x_t$ given $x_0$ without generating all of the intermediate states. To see this, first note that
 
 ```math
 \begin{align*}
