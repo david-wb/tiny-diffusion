@@ -27,6 +27,7 @@ where each $\epsilon_t \sim \mathcal{N}(\cdot; 0,  I)$ is unit noise.
 
 An important property of the diffusion process is that it is possible to express the distribution $q(x_t | x_0)$ in closed form
 without, which means we can directly sample $x_t$ given $x_0$ without going through all of the intermediate states. To see this, first note that
+
 ```math
 \begin{align*}
 x_t &= \sqrt{\alpha_t}x_{t-1} + \sqrt{1 - \alpha_t}\epsilon_t \\
@@ -67,8 +68,13 @@ for some unit noise $\epsilon$ and where
 Thus, the probability of any given state $x_t$ given a starting state $x_0$ is
 
 ```math
-    q(x_t \mid  x_0) = \mathcal{N}(x_t; \sqrt{\bar{\alpha}_t}x_{0}, (1 - \bar{\alpha}_t) I).
+    q(x_t \mid  x_0) = \mathcal{N}(x_t; \sqrt{\bar{\alpha}_t}x_{0}, (1 - \bar{\alpha}_t) I)
 ```
+
+Also, by rearranging, we can equivalently write $x_0$ in terms of $x_t$ and a noise term
+$$
+x_0 = \frac{1}{\sqrt{\bar{\alpha}_t}}(x_t - \sqrt{1 - \bar{\alpha}_t}\epsilon)
+$$
 
 # Denoising Process
 
@@ -163,9 +169,11 @@ Note that the first term is constant with respect to $\theta$ and can therefore 
 For the terms inside the summation, it's clear that we want to make $p_\theta(x_{i-1}\mid x_i)$ as close as possible to $q(x_{i-1}\mid x_i, x_0)$. We therefore need derive the distribution $q(x_{i-1}\mid x_i, x_0)$, which is a backward conditional probability of the forward process Markov chain. We can then use the mean and variance of this distribution as training targets for our model $p_\theta(x_{i-1}\mid x_i)$.
 
 ## Deriving Forward Process Backward Conditional Probabilities
+
 Here is the strategy. First we will derive the joint Gaussian distribution $q(x_i, x_{i-1}\mid x_0)$. Then we will use the conditional Gaussian formula to derive the mean and variance of $q(x_i \mid x_{i-1}, x_0)$, which is also Gaussian.
 
 We know that for two multi-variate Gaussian random variables $\mathbf{X}$ and $\mathbf{Y}$, their joint distribution is given by
+
 ```math
 \begin{bmatrix}
 \mathbf{X} \\
@@ -184,6 +192,7 @@ We know that for two multi-variate Gaussian random variables $\mathbf{X}$ and $\
 ```
 
 Thus we can substitute $\mathbf{X} \sim q(x_i \mid x_0)$ and $\mathbf{Y} \sim q(x_{i-1} \mid x_0)$ and get
+
 ```math
 q(x_i, x_{i-1} \mid x_0) = \mathcal{N} \left(
 \begin{bmatrix}
@@ -196,14 +205,17 @@ q(x_i, x_{i-1} \mid x_0) = \mathcal{N} \left(
 \end{bmatrix}
 \right)
 ```
-Now we just need to find $\boldsymbol{\Sigma}_{XY}$ which we can get from the definition of covariance. For brevity I will drop the notation $\mid x_0$, but remember we are conditioning on $x_0$. 
+
+Now we just need to find $\boldsymbol{\Sigma}_{XY}$ which we can get from the definition of covariance. For brevity I will drop the notation $\mid x_0$, but remember we are conditioning on $x_0$.
 
 First, let's use the expressions for $x_i$ and $x_{i-1}$ given $x_0$ in terms of random noise variables $\epsilon_t$.
+
 $$
-x_{i-1} = \sqrt{\bar{\alpha}_{i-1}}x_{0} + \sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0} 
+x_{i-1} = \sqrt{\bar{\alpha}_{i-1}}x_{0} + \sqrt{1 - \bar{\alpha}_{i-1}}\epsilon_{0}
 $$
 
 For $x_i$, remember that is is dependent $x_{i-1}$, so we must use the single-step expression:
+
 ```math
 \begin{align*}
 x_{i} &= \sqrt{\alpha_i}x_{i-1} + \sqrt{1 - \alpha_i}\epsilon_{i-1} \\
@@ -211,6 +223,7 @@ x_{i} &= \sqrt{\alpha_i}x_{i-1} + \sqrt{1 - \alpha_i}\epsilon_{i-1} \\
 &= \sqrt{\bar{\alpha}_{i}}x_{0} + \sqrt{\alpha_i (1 - \bar{\alpha}_{i-1})}\epsilon_{0} + \sqrt{1 - \alpha_i}\epsilon_{i-1}
 \end{align*}
 ```
+
 Okay, so now we have $x_i$ and $x_{i-1}$ expressed in terms of two **independent** random noise variables $\epsilon_{i-1}$ and $\epsilon_0$. Plugging these into the definition for covariance, we get
 
 ```math
@@ -238,6 +251,7 @@ Okay, so now we have $x_i$ and $x_{i-1}$ expressed in terms of two **independent
 &= \sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})I
 \end{align*}
 ```
+
 And now finally we have the following joint distribution for $x_i$ and $x_{i-1}$ conditioned on $x_0$:
 
 ```math
@@ -255,25 +269,27 @@ q(x_i, x_{i-1} \mid x_0) = \mathcal{N} \left(
 
 ### Conditional Gaussian Formula
 
-Now that we have the joint distribution, we can use the [conditional Gaussian formula](https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions) to derive $q(x_{i-1} \mid x_i, x_0)$.
+Now that we have a joint normal distribution for $x_{i-1}$ and $x_{i}$, we can use the [conditional Gaussian formula](https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions) to derive $q(x_{i-1} \mid x_i, x_0)$. Note that although we are conditioning on $x_0$, the joint distribution $q(x_{i-1}, x_i \mid x_0)$ remains a valid probability distribution, so the conditional Gaussian formula still applies to $x_{i-1}$ and $x_{i}$ while treating $x_0$ like a constant.
 
-The formula tells us that
+Substituting $X = x_i$ and $Y = x_{i-1}$, the formula tells us that
 
 ```math
 \begin{align*}
 \boldsymbol{\mu}_{Y\mid X} &= \boldsymbol{\mu}_{Y} + \boldsymbol{\Sigma}_{YX} \boldsymbol{\Sigma}_{X}^{-1}(\mathbf{X} - \boldsymbol{\mu}_{X})  \\
 &= \sqrt{\bar{\alpha}_{i-1}}x_{0} + \frac{\sqrt{\alpha_i}(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}(x_{i} - \sqrt{\bar{\alpha}_{i}}x_{0})  \\
-&= \left(\sqrt{\bar{\alpha}_{i-1}} - \sqrt{\bar{\alpha}_{i}}\sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_0 
+&= \left(\sqrt{\bar{\alpha}_{i-1}} - \sqrt{\bar{\alpha}_{i}}\sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_0
 + \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
-&= \sqrt{\bar{\alpha}_{i-1}}\left(1 - \alpha_{i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_0 
+&= \sqrt{\bar{\alpha}_{i-1}}\left(1 - \alpha_{i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_0
 + \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
-&= \sqrt{\bar{\alpha}_{i-1}}\left(\frac{1 - \bar{\alpha}_{i} - \alpha_i +\bar{\alpha}_{i}}{1 - \bar{\alpha}_{i}}\right)x_0 
+&= \sqrt{\bar{\alpha}_{i-1}}\left(\frac{1 - \bar{\alpha}_{i} - \alpha_i +\bar{\alpha}_{i}}{1 - \bar{\alpha}_{i}}\right)x_0
 + \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
-&= \boxed{\frac{\sqrt{\bar{\alpha}_{i-1}}}{1 - \bar{\alpha}_{i}}(1 - \alpha_i)x_0 
+&= \boxed{\frac{\sqrt{\bar{\alpha}_{i-1}}}{1 - \bar{\alpha}_{i}}(1 - \alpha_i)x_0
 + \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i}}
 \end{align*}
 ```
+
 and for the variance
+
 ```math
 \begin{align*}
 \boldsymbol{\Sigma}_{Y\mid X} &= \boldsymbol{\Sigma}_{Y} -\boldsymbol{\Sigma}_{YX} \boldsymbol{\Sigma}_{X}^{-1}\boldsymbol{\Sigma}_{XY}  \\
@@ -284,3 +300,111 @@ and for the variance
 &= \boxed{\frac{1 - \bar{\alpha}_{i-1}}{1 - \bar{\alpha}_i}\left(1 - \alpha_i\right)I}
 \end{align*}
 ```
+
+## Training the Denoising Model
+
+Alright, so now we have targets for the mean and variance of our probabilistic denoising model $p_\theta(x_{i-1} | x_i)$, which we want to make as close as possible to $q(x_{i-1}
+\mid x_i, x_0)$.
+
+The KL divergence of two isotropic normal distributions, $p$ and $q$, with variances $\sigma_1^2$ and $\sigma_2^2$, respectively is given by 
+
+
+```math
+\begin{align*}
+\text{KL}(p, q) = \frac{1}{2} \left[ \log \frac{\sigma_2^2}{\sigma_1^2} + \frac{\sigma_1^2 + (\mu_1 - \mu_2)^2}{\sigma_2^2} - 1 \right]
+\end{align*}
+```
+
+Let's define our target mean and variance as 
+
+$$
+\tilde{\mu}(x_i, x_0) = \frac{\sqrt{\bar{\alpha}_{i-1}}}{1 - \bar{\alpha}_{i}}(1 - \alpha_i)x_0
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i}
+$$
+
+$$
+\tilde{\sigma}^2(i) = \frac{1 - \bar{\alpha}_{i-1}}{1 - \bar{\alpha}_i}\left(1 - \alpha_i\right)
+$$
+
+If we define our model such that
+
+$$
+p_\theta(x_{i-1}\mid x_i) = \mathcal{N}(x_{t}; \mu_\theta(x_{i}, i)), \tilde{\sigma}^2(i)I)
+$$
+
+then our objective becomes
+
+```math
+\begin{align*}
+\text{KL}(q(x_{i-1}\mid x_i, x_0), p_\theta(x_{i-1}\mid x_i)) &= \frac{1}{2} \left[ \log \frac{\tilde{\sigma}^2(i)}{\tilde{\sigma}^2(i)} + \frac{\tilde{\sigma}^2(i) + (\tilde{\mu}(x_{i}, x_0)- \mu_\theta(x_{i}, i)))^2}{\tilde{\sigma}^2(i)} - 1 \right] \\
+&= \frac{1}{2}\frac{(\tilde{\mu}(x_{i}, x_0)- \mu_\theta(x_{i}, i)))^2}{\tilde{\sigma}^2(i)} + C \\
+\end{align*}
+```
+Where $C$ is a constant with respect to $\theta$.
+
+If we expand the target mean as using the closed form expression for $x_0$ in terms of $x_i$ and a random noise term, we get
+
+```math
+\begin{align*}
+\tilde{\mu}(x_i, x_0) &= \frac{\sqrt{\bar{\alpha}_{i-1}}}{1 - \bar{\alpha}_{i}}(1 - \alpha_i)x_0
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_{i} \\
+&= \frac{\sqrt{\bar{\alpha}_{i-1}}}{1 - \bar{\alpha}_{i}}(1 - \alpha_i)\left(\frac{1}{\sqrt{\bar{\alpha}_i}}(x_i - \sqrt{1 - \bar{\alpha}_i}\epsilon)\right)
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_i \\
+&= \frac{1}{\sqrt{\alpha_i}}\frac{1 - \alpha_i}{1 - \bar{\alpha}_{i}}\left(x_i - \sqrt{1 - \bar{\alpha}_i}\epsilon\right)
++ \sqrt{\alpha_i}\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}x_i \\
+
+&= \frac{1 - \alpha_i}{\sqrt{\alpha_i}\sqrt{1 - \bar{\alpha}_{i}}}\epsilon
++ \frac{1}{\sqrt{\alpha_i}}\left(\frac{1 - \alpha_i}{1 - \bar{\alpha}_{i}} + \alpha_i\frac{(1 - \bar{\alpha}_{i-1})}{(1 - \bar{\alpha}_{i})}\right)x_i \\
+
+&= \frac{1 - \alpha_i}{\sqrt{\alpha_i}\sqrt{1 - \bar{\alpha}_{i}}}\epsilon
++ \frac{1}{\sqrt{\alpha_i}}\left(\frac{1 - \alpha_i + \alpha_i - \bar{\alpha}_i}{1 - \bar{\alpha}_{i}}\right)x_i \\
+&= \frac{1 - \alpha_i}{\sqrt{\alpha_i}\sqrt{1 - \bar{\alpha}_{i}}}\epsilon
++ \frac{1}{\sqrt{\alpha_i}}x_i \\
+\end{align*}
+```
+This means we can reparameterize the mean of our denoising model $\mu_\theta$ as a function of $x_i$ and a learned noise term, and instead of predicting the mean directly, we can predict the noise instead.
+
+## Denoising Procedure
+In order to "denoise" an image $x_i$ by one step, i.e. draw a sample from $p_\theta(x_{i-1}\mid x_i)$, we first sample
+
+$$
+\epsilon \sim \epsilon_\theta(x_i, i)
+$$
+and
+$$
+z \sim \mathcal{N}(\cdot; 0, \tilde{\sigma}^2(i)I)
+$$
+and then compute
+$$
+x_{i-1} \coloneqq \frac{1 - \alpha_i}{\sqrt{\alpha_i}\sqrt{1 - \bar{\alpha}_{i}}}\epsilon
++ \frac{1}{\sqrt{\alpha_i}}x_i + z
+$$
+and repeat for $x_{i-2}$ and so on down to $x_0$.
+
+## Training Procedure
+
+The last part is to learn the model for $\epsilon_\theta(x_i, i)$. We can do this as follows.
+
+First select an image $x_0$ and time index $i$ at random 
+$$
+x_0 \sim \Omega_{\text{images}}
+$$
+$$
+i \sim [1, T]
+$$
+Then draw a random unit noise variable
+$$
+\epsilon \sim \mathcal{N}(\cdot; 1, I)
+$$
+and compute
+$$
+x_i := \sqrt{\bar{\alpha}_i}x_{0} + \sqrt{1 - \bar{\alpha}_i}\epsilon
+$$
+This gives us our "diffused" sample $x_i$ and the total noise that produced it from $x_0$.
+
+Finally, all we have to do is minimize the loss
+
+$$
+L(\theta) = \|\epsilon_\theta(x_i, i) - \epsilon\|^2
+$$
+via gradient descent.
