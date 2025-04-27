@@ -72,7 +72,7 @@ Thus, the probability of any given state $x_t$ given a starting state $x_0$ is
 ```
 
 Also, by rearranging, we can equivalently write $x_0$ in terms of $x_t$ and a noise term
-```
+```math
 x_0 = \frac{1}{\sqrt{\bar{\alpha}_t}}(x_t - \sqrt{1 - \bar{\alpha}_t}\epsilon)
 ```
 
