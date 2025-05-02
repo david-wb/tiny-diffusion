@@ -1,6 +1,6 @@
 # Tiny Diffusion
 
-This repo contains bare-minimum implementation of a denoising diffusion model for image generation. I found some of the math in the original [DDPM paper](https://arxiv.org/abs/2006.11239) a bit tough to follow since a few derivation steps were omitted for conciseness. I explain all of the mathematical details here, taking care to not leave out any potentially confusing steps, to make things clearer for myself and hopefully others.
+This repo contains bare-minimum implementation of a denoising diffusion model for image generation. I found some of the math in the original [DDPM paper](https://arxiv.org/abs/2006.11239) a bit tough to follow since a few derivation steps were omitted for conciseness. I expand many of the mathematical details here, taking care to not leave out any potentially confusing steps, to make things clearer for myself and hopefully others.
 
 # Intro
 
