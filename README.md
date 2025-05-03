@@ -8,7 +8,7 @@ This repo contains bare-minimum implementation of a denoising diffusion model fo
   <img src="static/diffusion.png" alt="Diffusion" />
 </div>
 
-Diffusion models work by a "forward process" which gradually adds random noise to a sample until it is indistinguishable from pure gaussian noise, and a "reverse process" which does the exact opposite, starting from a sample of pure noise and gradually recovering the original sample. These processes are illustrated in the figure above.
+Diffusion models work by a "forward process" which gradually adds random noise to a sample until it is indistinguishable from pure gaussian noise, and a "reverse process" which does the opposite, starting from a noisy "diffused" sample and gradually recovering the original sample. These processes are illustrated in the figure above. The goal is to learn a model of the reverse process which can be used to generate synthetic images from sample of pure noise. The distribution of generated images should theoretically match the the distribution of images the model is trained on.
 
 # Forward Process
 
@@ -24,9 +24,10 @@ where transition probabilities are isotropic Gaussians of the form
 q(x_t \mid  x_{t-1}) = \mathcal{N}(x_{t}; \sqrt{\alpha_{t}} x_{t-1}, (1 - \alpha_t) I). 
 ```
 
-Isotropic means the covariance is matrix is diagonal, with all diagonal entries being equal. 
-The $\alpha_t$ terms represent a variance schedule which controls the rate of diffusion. Each $\alpha_t$ is in the range $(0, 1)$ and $1 - \alpha_t$ is typically a small constant in the range $[10^{-4}, 0.02]$, for example. The y also ensure the distribution of 
-$x_t$ converges to unit Gaussian noise in the limit.
+Isotropic means the covariance matrix is diagonal and all diagonal entries are equal. 
+The $\alpha_t$ terms represent a variance schedule which controls the rate of diffusion. Each $\alpha_t$ is in the range $(0, 1)$ and $\beta_t \coloneqq 1 - \alpha_t$ is typically a small constant in the range $[10^{-4}, 0.02]$, for example. The $
+\alpha_t$ terms also ensure the distribution of 
+$q(x_t\mid x_0)$ converges to unit Gaussian noise in the limit.
 
 
 We can equivalently write the state transitions as a scaled value of the previous state added to a random noise term:
@@ -82,7 +83,8 @@ Thus, the probability of any given state $x_t$ given a starting state $x_0$ is
     q(x_t \mid  x_0) = \mathcal{N}(x_t; \sqrt{\bar{\alpha}_t}x_{0}, (1 - \bar{\alpha}_t) I)
 ```
 
-Also, by rearranging, we can equivalently write $x_0$ in terms of $x_t$ and a noise term
+By rearranging, we can equivalently write $x_0$ in terms of $x_t$ and the noise term $
+\epsilon$, which will be useful later in the analysis.
 ```math
 x_0 = \frac{1}{\sqrt{\bar{\alpha}_t}}(x_t - \sqrt{1 - \bar{\alpha}_t}\epsilon)
 ```
