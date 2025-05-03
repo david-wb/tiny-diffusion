@@ -83,8 +83,7 @@ Thus, the probability of any given state $x_t$ given a starting state $x_0$ is
     q(x_t \mid  x_0) = \mathcal{N}(x_t; \sqrt{\bar{\alpha}_t}x_{0}, (1 - \bar{\alpha}_t) I)
 ```
 
-By rearranging, we can equivalently write $x_0$ in terms of $x_t$ and the noise term $
-\epsilon$, which will be useful later in the analysis.
+By rearranging, we can equivalently write $x_0$ in terms of $x_t$ and the noise term $\epsilon$, which will be useful later in the analysis.
 ```math
 x_0 = \frac{1}{\sqrt{\bar{\alpha}_t}}(x_t - \sqrt{1 - \bar{\alpha}_t}\epsilon)
 ```
