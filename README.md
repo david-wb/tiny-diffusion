@@ -21,14 +21,13 @@ q(x_1, \ldots, x_t \mid  x_0) = \prod_{i=1}^{t}q(x_i \mid  x_{i-1}).
 where transition probabilities are isotropic Gaussians of the form
 
 ```math
-q(x_t \mid  x_{t-1}) = \mathcal{N}(x_{t}; \sqrt{\alpha_{t}} x_{t-1}, (1 - \alpha_t) I). 
+q(x_t \mid  x_{t-1}) = \mathcal{N}(x_{t}; \sqrt{\alpha_{t}} x_{t-1}, (1 - \alpha_t) I).
 ```
 
-Isotropic means the covariance matrix is diagonal and all diagonal entries are equal. 
+Isotropic means the covariance matrix is diagonal and all diagonal entries are equal.
 The $\alpha_t$ terms represent a variance schedule which controls the rate of diffusion. Each $\alpha_t$ is in the range $(0, 1)$ and $\beta_t \coloneqq 1 - \alpha_t$ is typically a small constant in the range $[10^{-4}, 0.02]$, for example. The $
-\alpha_t$ terms also ensure the distribution of 
+\alpha_t$ terms also ensure the distribution of
 $q(x_t\mid x_0)$ converges to unit Gaussian noise in the limit.
-
 
 We can equivalently write the state transitions as a scaled value of the previous state added to a random noise term:
 
@@ -84,6 +83,7 @@ Thus, the probability of any given state $x_t$ given a starting state $x_0$ is
 ```
 
 By rearranging, we can equivalently write $x_0$ in terms of $x_t$ and the noise term $\epsilon$, which will be useful later in the analysis.
+
 ```math
 x_0 = \frac{1}{\sqrt{\bar{\alpha}_t}}(x_t - \sqrt{1 - \bar{\alpha}_t}\epsilon)
 ```
@@ -95,7 +95,6 @@ The reverse "denoising" process, is defined by another Markov chain which iterat
 ```math
 p_\theta(x_0, x_1, \ldots, x_t) \coloneqq p(x_t)\prod_{i=0}^{t}p_\theta(x_{i-1}\mid x_i)
 ```
-
 
 where the Markov transitions are learned Gaussians with mean and variance parameterized by $\theta$:
 
@@ -121,7 +120,7 @@ The data likelihood is given by
 \mathbb{E}_{x_0\sim \Omega}[p_\theta(x_0)] = \mathbb{E}_{x_0}\left[\int p_\theta(x_0, x_1, \ldots, x_t) d\mathbf{x}_{1:t}\right]
 ```
 
-where $x_0\sim\Omega$ represents our distribution of images. 
+where $x_0\sim\Omega$ represents our distribution of images.
 
 The training objective is to find the optimal parameters $\theta^{*}$ such that
 
@@ -323,8 +322,7 @@ and for the variance
 Alright, so now we have targets for the mean and variance of our probabilistic denoising model $p_\theta(x_{i-1} | x_i)$, which we want to make as close as possible to $q(x_{i-1}
 \mid x_i, x_0)$.
 
-The KL divergence of two isotropic normal distributions, $p$ and $q$, with variances $\sigma_1^2$ and $\sigma_2^2$, respectively is given by 
-
+The KL divergence of two isotropic normal distributions, $p$ and $q$, with variances $\sigma_1^2$ and $\sigma_2^2$, respectively is given by
 
 ```math
 \begin{align*}
@@ -332,7 +330,7 @@ The KL divergence of two isotropic normal distributions, $p$ and $q$, with varia
 \end{align*}
 ```
 
-Let's define our target mean and variance as 
+Let's define our target mean and variance as
 
 ```math
 \tilde{\mu}(x_i, x_0) = \frac{\sqrt{\bar{\alpha}_{i-1}}}{1 - \bar{\alpha}_{i}}(1 - \alpha_i)x_0
@@ -357,6 +355,7 @@ then our objective becomes
 &= \frac{1}{2}\frac{(\tilde{\mu}(x_{i}, x_0)- \mu_\theta(x_{i}, i)))^2}{\tilde{\sigma}^2(i)} + C \\
 \end{align*}
 ```
+
 Where $C$ is a constant with respect to $\theta$.
 
 If we expand the target mean as using the closed form expression for $x_0$ in terms of $x_i$ and a random noise term, we get
@@ -379,44 +378,58 @@ If we expand the target mean as using the closed form expression for $x_0$ in te
 + \frac{1}{\sqrt{\alpha_i}}x_i \\
 \end{align*}
 ```
+
 This means we can reparameterize the mean of our denoising model $\mu_\theta$ as a function of $x_i$ and a learned noise term, and instead of predicting the mean directly, we can predict the noise instead.
 
 ## Denoising Procedure
+
 In order to "denoise" an image $x_i$ by one step, i.e. draw a sample from $p_\theta(x_{i-1}\mid x_i)$, we first predict the noise term
 
 ```math
 \epsilon \coloneqq \epsilon_\theta(x_i, i)
 ```
+
 then we sample a random noise $z$ to account for the variance of the target distribution
+
 ```math
 z \sim \mathcal{N}(\cdot; 0, \tilde{\sigma}^2(i)I)
 ```
+
 and finally we compute
+
 ```math
 x_{i-1} \coloneqq \frac{1 - \alpha_i}{\sqrt{\alpha_i}\sqrt{1 - \bar{\alpha}_{i}}}\epsilon
 + \frac{1}{\sqrt{\alpha_i}}x_i + z
 ```
+
 and repeat for $x_{i-2}$ and so on down to $x_1$.
 
 ## Training Procedure
 
 The last part is to learn the model for $\epsilon_\theta(x_i, i)$. We can do this as follows.
 
-First select an image $x_0$ and time index $i$ at random 
+First select an image $x_0$ and time index $i$ at random
+
 ```math
 x_0 \sim \Omega_{\text{images}}
 ```
+
 ```math
 i \sim [1, T]
 ```
+
 Then draw a random unit noise variable
+
 ```math
 \epsilon \sim \mathcal{N}(\cdot; 1, I)
 ```
+
 and compute
+
 ```math
 x_i := \sqrt{\bar{\alpha}_i}x_{0} + \sqrt{1 - \bar{\alpha}_i}\epsilon
 ```
+
 This gives us our "diffused" sample $x_i$ and the total noise that produced it from $x_0$.
 
 Finally, all we have to do is minimize the loss
@@ -424,4 +437,21 @@ Finally, all we have to do is minimize the loss
 ```math
 L(\theta) = \|\epsilon_\theta(x_i, i) - \epsilon\|^2
 ```
+
 via gradient descent.
+
+# Training
+
+The following script trains a basic UNet diffusion model on mnist images.
+
+```bash
+poetry run python main.py
+```
+
+## Sampled Images After 100 Epochs
+
+Here are a few random samples after 100 training epochs.
+
+<div align="center">
+  <img width="400" src="static/generated_mnist_epoch_99.png" alt="Diffusion" />
+</div>
