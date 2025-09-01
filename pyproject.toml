@@ -6,10 +6,12 @@ authors = ["David Brown <davewbrwn@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.10"
 torch = "^2.7.0"
 torchvision = "^0.22.0"
 matplotlib = "^3.10.1"
+wandb = "^0.21.3"
+scikit-learn = "^1.7.1"
 
 
 [build-system]

@@ -1,3 +1,6 @@
 data/
 *.png
 !static/*.png
+__pycache__/
+*.pth
+wandb/
