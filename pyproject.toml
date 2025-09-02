@@ -12,6 +12,7 @@ torchvision = "^0.22.0"
 matplotlib = "^3.10.1"
 wandb = "^0.21.3"
 scikit-learn = "^1.7.1"
+pydantic = "^2.11.7"
 
 
 [build-system]
