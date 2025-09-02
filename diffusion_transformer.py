@@ -43,7 +43,7 @@ class NoiseModel(nn.Module):
         latent_dim=20,
         num_heads=4,
         num_layers=4,
-        dropout=0.1,
+        dropout=0.05,
     ):
         super(NoiseModel, self).__init__()
         self.time_dim = time_dim
@@ -84,7 +84,7 @@ class NoiseModel(nn.Module):
         # y: (batch_size,)
 
         # Time and class embeddings
-        t = t.unsqueeze(-1).float()
+        t = (t / 1000).unsqueeze(-1).float()  # Normalize t to [0, 1]
         t_emb = self.time_embedding(t)  # (batch_size, time_dim)
         y_emb = self.class_embedding(y)  # (batch_size, time_dim)
         emb = t_emb + y_emb  # (batch_size, time_dim)
@@ -98,15 +98,12 @@ class NoiseModel(nn.Module):
         # Add positional encoding
         x = x.unsqueeze(0) + self.pos_encoding  # (1, batch_size, time_dim)
 
-        # Transformer expects (seq_len, batch_size, dim)
-        x = x.transpose(0, 1)  # (batch_size, 1, time_dim)
-
         # Pass through transformer blocks
         for block in self.transformer_blocks:
             x = block(x)
 
         # Remove sequence dimension and project back to latent_dim
-        x = x.squeeze(1)  # (batch_size, time_dim)
+        x = x.squeeze(0)  # (batch_size, time_dim)
         x = self.final_layer(x)  # (batch_size, latent_dim)
 
         return x
@@ -154,7 +151,7 @@ def train(
             "num_epochs": num_epochs,
             "batch_size": batch_size,
             "num_timesteps": forward_process.num_timesteps,
-            "learning_rate": 1e-3,
+            "learning_rate": 3e-4,  # Reduced learning rate
         },
     )
 
@@ -176,7 +173,8 @@ def train(
     )
     train_loader = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler)
 
-    optimizer = torch.optim.Adam(noise_model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(noise_model.parameters(), lr=3e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     vae.eval()  # VAE is pre-trained
     best_val_loss = float("inf")
 
@@ -287,6 +285,7 @@ def train(
         plt.close(fig)
 
         noise_model.train()
+        scheduler.step()
 
 
 @torch.no_grad()
