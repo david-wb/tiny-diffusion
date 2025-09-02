@@ -17,7 +17,7 @@ class VAEConfig(BaseModel):
     hidden_dim: int = 400
     input_dim: int = 784  # 28x28 MNIST images
     batch_size: int = 128
-    epochs: int = 10
+    epochs: int = 100
     learning_rate: float = 1e-3
     device: Any = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_dir: str = "checkpoints"
@@ -26,8 +26,6 @@ class VAEConfig(BaseModel):
 # Instantiate config
 config = VAEConfig()
 
-# Initialize wandb with config
-wandb.init(project="vae_mnist", config=config.model_dump())
 
 # Set random seed for reproducibility
 torch.manual_seed(42)
@@ -36,7 +34,8 @@ torch.manual_seed(42)
 class VAE(nn.Module):
     def __init__(self, config: VAEConfig):
         super(VAE, self).__init__()
-        
+        self.config = config
+
         # Encoder
         self.fc1 = nn.Linear(config.input_dim, config.hidden_dim)
         self.fc21 = nn.Linear(config.hidden_dim, config.latent_dim)  # Mean
@@ -152,44 +151,49 @@ def test(epoch):
     # Save best model
     if avg_test_loss < best_loss:
         best_loss = avg_test_loss
-        checkpoint_path = os.path.join(config.checkpoint_dir, f"vae_mnist_best_{str(uuid4())}.pth")
+        checkpoint_path = os.path.join(config.checkpoint_dir, f"vae_mnist_best.pth")
         torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'loss': best_loss
+            'loss': best_loss,
+            'config': config.model_dump()
         }, checkpoint_path)
         print(f"Saved best model to {checkpoint_path}")
         wandb.save(checkpoint_path)
     
     return avg_test_loss
 
-# Run training and log to wandb
-for epoch in range(1, config.epochs + 1):
-    train_loss = train(epoch)
-    test_loss = test(epoch)
-    wandb.log({
-        "epoch": epoch,
-        "train_loss": train_loss,
-        "test_loss": test_loss
-    })
+if __name__ == "__main__":
+    # Initialize wandb with config
+    wandb.init(project="vae_mnist", config=config.model_dump())
 
-# Generate samples
-def generate_samples(n_samples=16):
-    model.eval()
-    with torch.no_grad():
-        z = torch.randn(n_samples, config.latent_dim).to(config.device)
-        samples = model.decode(z).cpu()
-        
-        # Plot and log generated samples
-        fig = plt.figure(figsize=(4, 4))
-        for i in range(n_samples):
-            plt.subplot(4, 4, i + 1)
-            plt.imshow(samples[i].reshape(28, 28), cmap='gray')
-            plt.axis('off')
-        wandb.log({"generated_samples": wandb.Image(fig)})
-        plt.close(fig)
+    # Run training and log to wandb
+    for epoch in range(1, config.epochs + 1):
+        train_loss = train(epoch)
+        test_loss = test(epoch)
+        wandb.log({
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "test_loss": test_loss
+        })
 
-# Generate and log samples
-generate_samples()
-wandb.finish()
+    # Generate samples
+    def generate_samples(n_samples=16):
+        model.eval()
+        with torch.no_grad():
+            z = torch.randn(n_samples, config.latent_dim).to(config.device)
+            samples = model.decode(z).cpu()
+            
+            # Plot and log generated samples
+            fig = plt.figure(figsize=(4, 4))
+            for i in range(n_samples):
+                plt.subplot(4, 4, i + 1)
+                plt.imshow(samples[i].reshape(28, 28), cmap='gray')
+                plt.axis('off')
+            wandb.log({"generated_samples": wandb.Image(fig)})
+            plt.close(fig)
+
+    # Generate and log samples
+    generate_samples()
+    wandb.finish()
