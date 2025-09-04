@@ -183,6 +183,18 @@ tests = ["cloudpickle ; platform_python_implementation == \"CPython\"", "hypothe
 tests-mypy = ["mypy (>=1.11.1) ; platform_python_implementation == \"CPython\" and python_version >= \"3.10\"", "pytest-mypy-plugins ; platform_python_implementation == \"CPython\" and python_version >= \"3.10\""]
 
 [[package]]
+name = "braceexpand"
+version = "0.1.7"
+description = "Bash-style brace expansion for Python"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "braceexpand-0.1.7-py2.py3-none-any.whl", hash = "sha256:91332d53de7828103dcae5773fb43bc34950b0c8160e35e0f44c4427a3b85014"},
+    {file = "braceexpand-0.1.7.tar.gz", hash = "sha256:e6e539bd20eaea53547472ff94f4fb5c3d3bf9d0a89388c4b56663aba765f705"},
+]
+
+[[package]]
 name = "certifi"
 version = "2025.8.3"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -2775,6 +2787,26 @@ sweeps = ["sweeps (>=0.2.0)"]
 workspaces = ["wandb-workspaces"]
 
 [[package]]
+name = "webdataset"
+version = "1.0.2"
+description = "High performance storage and I/O for deep learning and data processing."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "webdataset-1.0.2-py3-none-any.whl", hash = "sha256:3dbfced32b25c0d199c6b9787937b6f85742bc3c84f652c846893075c1c082d9"},
+    {file = "webdataset-1.0.2.tar.gz", hash = "sha256:7f0498be827cfa46cc5430a58768a24e2c6a410676a61be1838f53d61afdaab4"},
+]
+
+[package.dependencies]
+braceexpand = "*"
+numpy = "*"
+pyyaml = "*"
+
+[package.extras]
+dev = ["Pillow", "autoflake", "bandit", "black[jupyter]", "build", "bump2version", "diffusers", "flake8", "icecream", "imageio", "isort", "jupyter", "jupyterlab", "lmdb", "matplotlib", "mkdocs", "mkdocs-autorefs", "mkdocs-jupyter", "mkdocs-material", "mkdocs-material-extensions", "mkdocs-minify-plugin", "mkdocstrings", "mkdocstrings-python", "msgpack", "mypy", "nbconvert", "notebook", "papermill", "pdm", "pre-commit", "pydocstyle", "pytest", "pytest-cov", "pytorch_lightning", "ray[default,tune]", "ruff", "scipy", "setuptools", "torch", "torchvision", "transformers", "twine", "typer", "types-PyYAML", "wheel"]
+
+[[package]]
 name = "xxhash"
 version = "3.5.0"
 description = "Python binding for xxHash"
@@ -3029,4 +3061,4 @@ propcache = ">=0.2.1"
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.10"
-content-hash = "06dfd6b215383156054d557a389ace25d696e5f608486b1272a0d9d0016796b8"
+content-hash = "a704a2a787fa1beda1912ef16f1e2bcfbf4fc3100747687e445efb9086f95acd"

@@ -7,6 +7,7 @@ from torchvision import transforms
 import matplotlib.pyplot as plt
 import wandb
 import os
+import json
 from uuid import uuid4
 from pydantic import BaseModel
 from typing import Any
@@ -15,6 +16,9 @@ from PIL import Image
 import numpy as np
 import requests
 from io import BytesIO
+import hashlib
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 # Configuration model using Pydantic
@@ -28,6 +32,8 @@ class VAEConfig(BaseModel):
     learning_rate: float = 1e-4
     device: Any = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_dir: str = "checkpoints"
+    image_cache_dir: str = "data/laion"  # Directory for caching images
+    failed_urls_cache: str = "data/failed_urls.json"  # File for caching failed URLs
     n_images_to_log: int = 8
 
 
@@ -107,9 +113,9 @@ def loss_function(recon_x, x, mu, logvar):
     return BCE + KLD
 
 
-# Load LAION dataset
+# Load LAION dataset with download mode
 def load_laion_dataset():
-    # Load dataset without streaming, limiting to a subset for memory
+    # Load dataset with download mode, limiting to a subset for memory
     train = load_dataset("laion/laion2B-en-aesthetic", split="train[:10000]")
     return train
 
@@ -123,11 +129,31 @@ transform = transforms.Compose(
 )
 
 
-# Custom dataset wrapper for LAION
+# Custom dataset wrapper for LAION with local caching
 class LAIONDataset(torch.utils.data.Dataset):
     def __init__(self, dataset, transform):
         self.dataset = dataset
         self.transform = transform
+        # Create image cache directory
+        os.makedirs(config.image_cache_dir, exist_ok=True)
+        # Initialize failed URLs cache
+        self.failed_urls = set()
+        os.makedirs(os.path.dirname(config.failed_urls_cache), exist_ok=True)
+        if os.path.exists(config.failed_urls_cache):
+            try:
+                with open(config.failed_urls_cache, "r") as f:
+                    self.failed_urls = set(json.load(f))
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Error loading failed URLs cache: {e}")
+                self.failed_urls = set()
+
+    def save_failed_urls(self):
+        """Save the failed URLs to a JSON file."""
+        try:
+            with open(config.failed_urls_cache, "w") as f:
+                json.dump(list(self.failed_urls), f)
+        except IOError as e:
+            print(f"Error saving failed URLs cache: {e}")
 
     def __len__(self):
         return len(self.dataset)
@@ -135,17 +161,45 @@ class LAIONDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         sample = self.dataset[idx]
         try:
-            # Assume the dataset has a 'URL' key for image URLs
             url = sample["URL"]
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()  # Raise an error for bad responses
+            if url in self.failed_urls:
+                print(f"Skipping previously failed URL: {url}")
+                return torch.zeros((3, config.image_size, config.image_size))
+
+            url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
+            cache_path = os.path.join(config.image_cache_dir, f"{url_hash}.jpg")
+
+            if os.path.exists(cache_path):
+                try:
+                    image = Image.open(cache_path).convert("RGB")
+                except (OSError, Image.UnidentifiedImageError) as e:
+                    print(f"Corrupted cache file {cache_path}, redownloading: {e}")
+                    os.remove(cache_path)
+                else:
+                    if self.transform:
+                        image = self.transform(image)
+                    return image
+
+            # Retry mechanism for downloading
+            session = requests.Session()
+            retries = Retry(
+                total=2, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504]
+            )
+            session.mount("http://", HTTPAdapter(max_retries=retries))
+            session.mount("https://", HTTPAdapter(max_retries=retries))
+            response = session.get(url, timeout=10)
+            response.raise_for_status()
             image = Image.open(BytesIO(response.content)).convert("RGB")
+
+            image.save(cache_path, "JPEG")
+
             if self.transform:
                 image = self.transform(image)
             return image
-        except (requests.RequestException, Image.UnidentifiedImageError) as e:
+        except Exception as e:
             print(f"Skipping sample {idx} due to error: {e}")
-            # Return a zero tensor of correct shape to avoid breaking DataLoader
+            self.failed_urls.add(url)
+            self.save_failed_urls()
             return torch.zeros((3, config.image_size, config.image_size))
 
 
@@ -153,7 +207,11 @@ class LAIONDataset(torch.utils.data.Dataset):
 laion_train = load_laion_dataset()
 train_dataset = LAIONDataset(laion_train, transform)
 train_loader = DataLoader(
-    train_dataset, batch_size=config.batch_size, shuffle=True, num_workers=0, pin_memory=True
+    train_dataset,
+    batch_size=config.batch_size,
+    shuffle=True,
+    num_workers=0,
+    pin_memory=True,
 )
 
 
