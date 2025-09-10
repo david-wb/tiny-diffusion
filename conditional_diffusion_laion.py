@@ -25,8 +25,14 @@ import types
 config = types.SimpleNamespace(
     image_cache_dir="./data/laion_image_cache",
     failed_urls_cache="./data/failed_urls.json",
-    image_size=512
+    image_size=512,
 )
+
+
+def samples_to_wandb_images(samples, prompts):
+    for sample, prompt in zip(samples, prompts):
+        yield wandb.Image(sample, caption=prompt)
+
 
 # Custom dataset wrapper for LAION with local caching
 class LAIONDataset(torch.utils.data.Dataset):
@@ -103,18 +109,20 @@ class LAIONDataset(torch.utils.data.Dataset):
             self.save_failed_urls()
             return torch.zeros((3, config.image_size, config.image_size)), ""
 
+
 # Load LAION dataset with download mode
 def load_laion_dataset():
     train = load_dataset("laion/laion2B-en-aesthetic", split="train[:10000]")
     return train
 
+
 def get_text_embeds(tokenizer, text_model, device, texts):
     inputs = tokenizer(
-        texts, 
-        padding="max_length", 
-        max_length=tokenizer.model_max_length, 
-        truncation=True, 
-        return_tensors="pt"
+        texts,
+        padding="max_length",
+        max_length=tokenizer.model_max_length,
+        truncation=True,
+        return_tensors="pt",
     )
     with torch.no_grad():
         outputs = text_model(inputs.input_ids.to(device))
@@ -128,6 +136,7 @@ class NoiseModel(nn.Module):
     UNet to predict the noise given x_t, t, and text embedding.
     Adapted for latent space (4 channels, 64x64) and text conditioning.
     """
+
     def __init__(self, time_dim=768):
         super(NoiseModel, self).__init__()
 
@@ -175,9 +184,7 @@ class NoiseModel(nn.Module):
 
         # Bottleneck (8x8 -> 8x8)
         self.bottleneck = nn.Sequential(
-            nn.Conv2d(512, 512, 3, padding=1), 
-            nn.BatchNorm2d(512), 
-            nn.ReLU()
+            nn.Conv2d(512, 512, 3, padding=1), nn.BatchNorm2d(512), nn.ReLU()
         )
 
         # Decoder
@@ -310,14 +317,17 @@ def train(
     model_save_path: str = "./best_model.pth",
 ):
     # Initialize wandb
-    wandb.init(project="laion-diffusion-model", config={
-        "num_epochs": num_epochs,
-        "batch_size": batch_size,
-        "num_timesteps": forward_process.num_timesteps,
-        "learning_rate": 1e-4,
-        "image_size": 512,
-        "latent_size": 64,
-    })
+    wandb.init(
+        project="laion-diffusion-model",
+        config={
+            "num_epochs": num_epochs,
+            "batch_size": batch_size,
+            "num_timesteps": forward_process.num_timesteps,
+            "learning_rate": 1e-4,
+            "image_size": 512,
+            "latent_size": 64,
+        },
+    )
 
     # Define transform for 512x512 RGB images
     transform = transforms.Compose(
@@ -352,10 +362,22 @@ def train(
 
     noise_model.train()
     prompts_for_sample = [
-        "a photo of a cat", "a photo of a dog", "a photo of a horse", "a photo of a cow",
-        "a photo of a bird", "a photo of a fish", "a photo of a tree", "a photo of a flower",
-        "a photo of a house", "a photo of a car", "a photo of a person", "a photo of a mountain",
-        "a photo of a river", "a photo of a sky", "a photo of a sun", "a photo of a moon"
+        "a photo of a cat",
+        "a photo of a dog",
+        "a photo of a horse",
+        "a photo of a cow",
+        # "a photo of a bird",
+        # "a photo of a fish",
+        # "a photo of a tree",
+        # "a photo of a flower",
+        # "a photo of a house",
+        # "a photo of a car",
+        # "a photo of a person",
+        # "a photo of a mountain",
+        # "a photo of a river",
+        # "a photo of a sky",
+        # "a photo of a sun",
+        # "a photo of a moon",
     ]
     text_embeds_for_sample = get_text_embeds_local(prompts_for_sample)
 
@@ -386,10 +408,36 @@ def train(
 
             train_loss += loss.item()
             if batch_idx % 10 == 0:
-                print(f"Epoch {epoch}, Batch {batch_idx}, Train Loss: {loss.item():.4f}")
+                wandb.log(
+                    {"epoch": epoch, "batch": batch_idx, "batch_train_loss": loss}
+                )
+
+            # Log original and reconstructed images with prompts every 100 batches
+            if batch_idx % 100 == 0:
+                with torch.no_grad():
+                    samples = sample(
+                        noise_model,
+                        forward_process,
+                        device,
+                        n_samples=4,
+                        text_embeds=text_embeds_for_sample,
+                        vae=vae,
+                        scaling_factor=scaling_factor,
+                    )
+                    wandb_images = list(
+                        samples_to_wandb_images(samples, prompts_for_sample)
+                    )
+                    # Log to wandb
+                    wandb.log(
+                        {
+                            "epoch": epoch,
+                            "batch": batch_idx,
+                            "sampled_images": wandb_images,
+                        }
+                    )
 
         avg_train_loss = train_loss / len(train_loader)
-        wandb.log({"epoch": epoch, "train_loss": avg_train_loss})
+        wandb.log({"epoch": epoch, "epoch_train_loss": avg_train_loss})
 
         # Validation
         noise_model.eval()
@@ -406,7 +454,10 @@ def train(
                 x_0 = latents
 
                 t = torch.randint(
-                    0, forward_process.num_timesteps, (batch_size_actual,), device=device
+                    0,
+                    forward_process.num_timesteps,
+                    (batch_size_actual,),
+                    device=device,
                 )
                 x_t, noise = forward_process.q_sample(device, x_0, t)
                 predicted_noise = noise_model(x_t, t, text_embeds)
@@ -415,16 +466,28 @@ def train(
 
         avg_val_loss = val_loss / len(val_loader)
         wandb.log({"epoch": epoch, "val_loss": avg_val_loss})
-        print(f"Epoch {epoch}, Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
+        print(
+            f"Epoch {epoch}, Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}"
+        )
 
         # Save best model
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(noise_model.state_dict(), model_save_path)
-            print(f"Saved best model at epoch {epoch} with val loss: {best_val_loss:.4f}")
+            print(
+                f"Saved best model at epoch {epoch} with val loss: {best_val_loss:.4f}"
+            )
 
         # Generate samples with prompts
-        samples = sample(noise_model, forward_process, device, n_samples=16, text_embeds=text_embeds_for_sample, vae=vae, scaling_factor=scaling_factor)
+        samples = sample(
+            noise_model,
+            forward_process,
+            device,
+            n_samples=16,
+            text_embeds=text_embeds_for_sample,
+            vae=vae,
+            scaling_factor=scaling_factor,
+        )
         samples_grid = torchvision.utils.make_grid(samples, nrow=4)
 
         # Create figure with prompts
@@ -443,10 +506,14 @@ def train(
         torchvision.utils.save_image(samples_grid, f"generated_epoch_{epoch}.png")
 
         # Log to wandb
-        wandb.log({
-            "epoch": epoch,
-            "samples": wandb.Image(fig, caption=f"Generated samples at epoch {epoch}")
-        })
+        wandb.log(
+            {
+                "epoch": epoch,
+                "samples": wandb.Image(
+                    fig, caption=f"Generated samples at epoch {epoch}"
+                ),
+            }
+        )
         plt.close(fig)
 
         noise_model.train()
@@ -455,7 +522,15 @@ def train(
 
 
 @torch.no_grad()
-def sample(noise_model: NoiseModel, diffusion: ForwardProcess, device, n_samples=16, text_embeds=None, vae=None, scaling_factor=1.0):
+def sample(
+    noise_model: NoiseModel,
+    diffusion: ForwardProcess,
+    device,
+    n_samples=16,
+    text_embeds=None,
+    vae=None,
+    scaling_factor=1.0,
+):
     if text_embeds is None:
         raise ValueError("Text embeddings must be provided for conditional generation.")
     if text_embeds.shape[0] != n_samples:
@@ -510,7 +585,10 @@ def visualize_samples(samples, title="Generated Samples", prompts=None):
         img = np.transpose(samples[i], (1, 2, 0))
         axes[row][col].imshow(img)
         if prompts is not None:
-            axes[row][col].set_title(prompts[i][:15] + "..." if len(prompts[i]) > 15 else prompts[i], fontsize=9)
+            axes[row][col].set_title(
+                prompts[i][:15] + "..." if len(prompts[i]) > 15 else prompts[i],
+                fontsize=9,
+            )
         axes[row][col].axis("off")
 
     for i in range(n_samples, grid_size * grid_size):
@@ -522,11 +600,21 @@ def visualize_samples(samples, title="Generated Samples", prompts=None):
 
 
 @torch.no_grad()
-def visualize_denoising_process(model, diffusion, device, n_samples=4, prompts=None, vae=None, scaling_factor=1.0, tokenizer=None, text_model=None):
+def visualize_denoising_process(
+    model,
+    diffusion,
+    device,
+    n_samples=4,
+    prompts=None,
+    vae=None,
+    scaling_factor=1.0,
+    tokenizer=None,
+    text_model=None,
+):
     if prompts is None:
         prompts = ["a photo of a cat"] * n_samples
     text_embeds = get_text_embeds(tokenizer, text_model, device, prompts)
-    
+
     x = torch.randn(n_samples, 4, 64, 64, device=device)
     intermediates = []
 
@@ -562,39 +650,66 @@ def visualize_denoising_process(model, diffusion, device, n_samples=4, prompts=N
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"device: {device}")
-    
+
     # Load pretrained VAE and text encoder
-    vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").to(device)
+    vae = AutoencoderKL.from_pretrained(
+        "CompVis/stable-diffusion-v1-4", subfolder="vae"
+    ).to(device)
     tokenizer = CLIPTokenizer.from_pretrained("openai/clip-vit-large-patch14")
-    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
+    text_model = CLIPTextModel.from_pretrained("openai/clip-vit-large-patch14").to(
+        device
+    )
     scaling_factor = vae.config.scaling_factor
-    
+
     # Initialize models
     noise_model = NoiseModel(time_dim=768).to(device)
     forward_process = ForwardProcess()
 
     # Train with model saving and wandb logging
     train(
-        noise_model, forward_process, device, vae=vae, tokenizer=tokenizer, 
-        text_model=text_model, scaling_factor=scaling_factor, 
-        num_epochs=10, batch_size=8, model_save_path="best_model.pth"
+        noise_model,
+        forward_process,
+        device,
+        vae=vae,
+        tokenizer=tokenizer,
+        text_model=text_model,
+        scaling_factor=scaling_factor,
+        num_epochs=10,
+        batch_size=8,
+        model_save_path="best_model.pth",
     )
 
-    # Generate and visualize samples for specific prompts
     prompts_gen = [
-        "a photo of a cat", "a photo of a dog", "a photo of a horse", "a photo of a cow",
-        "a photo of a bird", "a photo of a fish", "a photo of a tree", "a photo of a flower",
-        "a photo of a house", "a photo of a car", "a photo of a person", "a photo of a mountain",
-        "a photo of a river", "a photo of a sky", "a photo of a sun", "a photo of a moon"
+        "a photo of a cat",
+        "a photo of a dog",
+        "a photo of a horse",
+        "a photo of a cow",
+        "a photo of a bird",
+        "a photo of a fish",
+        "a photo of a tree",
+        "a photo of a flower",
+        "a photo of a house",
+        "a photo of a car",
+        "a photo of a person",
+        "a photo of a mountain",
+        "a photo of a river",
+        "a photo of a sky",
+        "a photo of a sun",
+        "a photo of a moon",
     ]
-    text_embeds_gen = get_text_embeds(tokenizer, text_model, device, prompts_gen)
+    text_embeds = get_text_embeds(tokenizer, text_model, device, prompts_gen)
     samples = sample(
-        noise_model, forward_process, device, n_samples=16, 
-        text_embeds=text_embeds_gen, vae=vae, scaling_factor=scaling_factor
+        noise_model,
+        forward_process,
+        device,
+        n_samples=16,
+        text_embeds=text_embeds,
+        vae=vae,
+        scaling_factor=scaling_factor,
     )
-    visualize_samples(samples, title="Generated Samples", prompts=prompts_gen)
-
     # Log final samples to wandb (assuming wandb is still active or re-init if needed)
     samples_grid = torchvision.utils.make_grid(samples, nrow=4)
-    wandb.log({"final_samples": wandb.Image(samples_grid, caption="Final Generated Samples")})
+    wandb.log(
+        {"final_samples": wandb.Image(samples_grid, caption="Final Generated Samples")}
+    )
     wandb.finish()
