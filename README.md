@@ -440,12 +440,18 @@ L(\theta) = \|\epsilon_\theta(x_i, i) - \epsilon\|^2
 
 via gradient descent.
 
-# Training
+# Example in Python
 
-The following script trains a basic UNet diffusion model on mnist images.
+To run the example code, clone the repo and `cd` into it. Then install the dependencies with
 
 ```bash
-poetry run python main.py
+poetry install
+```
+
+Then run the following script to train a minimal UNet diffusion model on mnist images.
+
+```bash
+poetry run python -m diffusion
 ```
 
 ## Sampled Images After 100 Epochs
