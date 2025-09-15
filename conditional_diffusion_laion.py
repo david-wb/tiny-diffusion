@@ -417,6 +417,7 @@ def train(
                 loss = F.mse_loss(predicted_noise, noise)
             optimizer.zero_grad()
             scaler.scale(loss).backward()
+            torch.nn.utils.clip_grad_norm_(noise_model.parameters(), max_norm=1.0)  # Add gradient clipping
             scaler.step(optimizer)
             scaler.update()
             train_loss += loss.item()
