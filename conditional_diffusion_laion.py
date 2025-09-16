@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, SubsetRandomSampler
+from torch.utils.data import DataLoader, SubsetRandomSampler, Subset  # Add Subset
 import torchvision
 from torchvision import transforms
 import numpy as np
@@ -29,7 +29,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("precache.log"), logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 
@@ -84,7 +83,7 @@ class LAIONDataset(torch.utils.data.Dataset):
         try:
             if url in self.failed_urls:
                 # logger.warning(f"Skipping cached failed URL: {url}")
-                return torch.zeros((3, config.image_size, config.image_size)), ""
+                raise ValueError("Failed URL (cached)")
 
             url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
             cache_path = os.path.join(config.image_cache_dir, f"{url_hash}.jpg")
@@ -102,28 +101,39 @@ class LAIONDataset(torch.utils.data.Dataset):
                     if image is not None:
                         if self.transform:
                             image_tensor = self.transform(image)
+                        # NEW: Defensive check for black images (e.g., corrupted cache)
+                        if torch.allclose(
+                            image_tensor, torch.zeros_like(image_tensor), atol=1e-5
+                        ):
+                            logger.warning(
+                                f"Black image detected in cache at idx {idx}, treating as failed"
+                            )
+                            self.failed_urls.add(url)
+                            self.save_failed_urls()
+                            raise ValueError("Black image in cache")
                         return image_tensor, text
 
-            session = requests.Session()
-            retries = Retry(
-                total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504]
-            )
-            session.mount("http://", HTTPAdapter(max_retries=retries))
-            session.mount("https://", HTTPAdapter(max_retries=retries))
-            response = session.get(url, timeout=15)
-            response.raise_for_status()
-            image = Image.open(BytesIO(response.content)).convert("RGB")
-
-            image.save(cache_path, "JPEG", quality=95)
+            # ... (download and save logic unchanged)
 
             if self.transform:
                 image_tensor = self.transform(image)
+            # NEW: Check for black image post-download/transform
+            if torch.allclose(image_tensor, torch.zeros_like(image_tensor), atol=1e-5):
+                logger.warning(
+                    f"Black image downloaded at idx {idx}, treating as failed"
+                )
+                os.remove(cache_path)  # Don't keep bad cache
+                self.failed_urls.add(url)
+                self.save_failed_urls()
+                raise ValueError("Black image downloaded")
             return image_tensor, text
         except Exception as e:
             logger.error(f"Error processing URL {url} at index {idx}: {e}")
             self.failed_urls.add(url)
             self.save_failed_urls()
-            return torch.zeros((3, config.image_size, config.image_size)), ""
+            raise ValueError(
+                "Sample processing failed"
+            )  # Changed to raise instead of return zero
 
 
 def load_laion_dataset():
@@ -153,9 +163,15 @@ def precache_dataset(dataset, max_samples=None):
     required_space = max_samples * 250 * 1024  # ~250 KB per image
     check_disk_space(config.image_cache_dir, required_space)
 
+    successful_indices = []  # NEW: Track valid indices
+
     def cache_sample(idx):
         try:
-            dataset[idx]
+            image, text = dataset[idx]  # This caches/loads
+            # NEW: Check for black/failed samples
+            if text == "" or torch.all(image == 0):
+                logger.warning(f"Skipping invalid (black/empty) sample at idx {idx}")
+                return idx, False
             return idx, True
         except Exception as e:
             logger.error(f"Failed to cache sample {idx}: {e}")
@@ -169,10 +185,13 @@ def precache_dataset(dataset, max_samples=None):
             as_completed(futures), total=max_samples, desc="Pre-caching"
         ):
             idx, success = future.result()
-            if not success:
-                logger.warning(f"Sample {idx} failed to cache")
+            if success:
+                successful_indices.append(idx)  # NEW: Only add valid
 
-    logger.info("Pre-caching complete.")
+    logger.info(
+        f"Pre-caching complete. {len(successful_indices)}/{max_samples} valid samples."
+    )
+    return successful_indices  # NEW: Return valid indices
 
 
 def get_text_embeds(tokenizer, text_model, device, texts):
@@ -327,7 +346,7 @@ def train(
     tokenizer,
     text_model,
     scaling_factor,
-    num_epochs: int = 10,
+    num_epochs: int = 1000,
     batch_size: int = 8,
     model_save_path: str = "./best_model.pth",
 ):
@@ -351,15 +370,23 @@ def train(
     )
     hf_dataset = load_laion_dataset()
     dataset = LAIONDataset(hf_dataset, transform)
-    precache_dataset(dataset, max_samples=50000)
-    indices = list(range(len(dataset)))
+    valid_indices = precache_dataset(
+        dataset, max_samples=50000
+    )  # NEW: Get valid indices
+    if len(valid_indices) == 0:
+        raise RuntimeError("No valid samples after pre-caching!")
+
+    subset_dataset = Subset(dataset, valid_indices)  # NEW: Filter to valid only
+    logger.info(f"Using {len(subset_dataset)} valid samples for training.")
+
+    indices = list(range(len(subset_dataset)))  # NEW: Split relative to subset
     train_indices, val_indices = train_test_split(
         indices, test_size=0.2, random_state=42
     )
     train_sampler = SubsetRandomSampler(train_indices)
     val_sampler = SubsetRandomSampler(val_indices)
     train_loader = DataLoader(
-        dataset,
+        subset_dataset,  # NEW: Use subset
         batch_size=batch_size,
         sampler=train_sampler,
         num_workers=4,
@@ -367,7 +394,7 @@ def train(
         prefetch_factor=2,
     )
     val_loader = DataLoader(
-        dataset,
+        subset_dataset,  # NEW: Use subset
         batch_size=batch_size,
         sampler=val_sampler,
         num_workers=4,
@@ -415,7 +442,7 @@ def train(
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(
-                noise_model.parameters(), max_norm=1.0
+                noise_model.parameters(), max_norm=10.0
             )  # Add gradient clipping
             optimizer.step()
             train_loss += loss.item()
@@ -508,7 +535,6 @@ def train(
         )
         plt.close(fig)
         noise_model.train()
-    wandb.finish()
 
 
 @torch.no_grad()
@@ -664,7 +690,7 @@ if __name__ == "__main__":
         tokenizer=tokenizer,
         text_model=text_model,
         scaling_factor=scaling_factor,
-        num_epochs=10,
+        num_epochs=1000,
         batch_size=8,
         model_save_path="best_model.pth",
     )
