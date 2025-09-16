@@ -20,7 +20,6 @@ from io import BytesIO
 from diffusers import AutoencoderKL
 from transformers import CLIPTextModel, CLIPTokenizer
 import types
-from torch.amp import GradScaler, autocast  # Updated AMP imports
 from tqdm import tqdm
 import logging
 import shutil
@@ -376,7 +375,6 @@ def train(
         prefetch_factor=2,
     )
     optimizer = torch.optim.Adam(noise_model.parameters(), lr=1e-4)
-    scaler = GradScaler("cuda")  # Updated API
     best_val_loss = float("inf")
 
     def get_text_embeds_local(texts):
@@ -397,29 +395,29 @@ def train(
             images = images.to(device)
             text_embeds = get_text_embeds_local(texts)
             batch_size_actual = images.shape[0]
-            with autocast("cuda"):  # Updated API
-                vae.to(device)
-                latents = vae.encode(images).latent_dist.sample()
-                latents = latents * scaling_factor
-                x_0 = latents
-                t = torch.randint(
-                    0,
-                    forward_process.num_timesteps,
-                    (batch_size_actual,),
-                    device=device,
-                )
-                x_t, noise = forward_process.q_sample(device, x_0, t)
-                # Log device of tensors for debugging
-                logger.debug(
-                    f"x_t device: {x_t.device}, t device: {t.device}, text_embeds device: {text_embeds.device}"
-                )
-                predicted_noise = noise_model(x_t, t, text_embeds)
-                loss = F.mse_loss(predicted_noise, noise)
+            vae.to(device)
+            latents = vae.encode(images).latent_dist.sample()
+            latents = latents * scaling_factor
+            x_0 = latents
+            t = torch.randint(
+                0,
+                forward_process.num_timesteps,
+                (batch_size_actual,),
+                device=device,
+            )
+            x_t, noise = forward_process.q_sample(device, x_0, t)
+            # Log device of tensors for debugging
+            logger.debug(
+                f"x_t device: {x_t.device}, t device: {t.device}, text_embeds device: {text_embeds.device}"
+            )
+            predicted_noise = noise_model(x_t, t, text_embeds)
+            loss = F.mse_loss(predicted_noise, noise)
             optimizer.zero_grad()
-            scaler.scale(loss).backward()
-            torch.nn.utils.clip_grad_norm_(noise_model.parameters(), max_norm=1.0)  # Add gradient clipping
-            scaler.step(optimizer)
-            scaler.update()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(
+                noise_model.parameters(), max_norm=1.0
+            )  # Add gradient clipping
+            optimizer.step()
             train_loss += loss.item()
             if batch_idx % 10 == 0:
                 wandb.log(
@@ -455,20 +453,19 @@ def train(
                 images = images.to(device)
                 text_embeds = get_text_embeds_local(texts)
                 batch_size_actual = images.shape[0]
-                with autocast("cuda"):  # Updated API
-                    vae.to(device)
-                    latents = vae.encode(images).latent_dist.sample()
-                    latents = latents * scaling_factor
-                    x_0 = latents
-                    t = torch.randint(
-                        0,
-                        forward_process.num_timesteps,
-                        (batch_size_actual,),
-                        device=device,
-                    )
-                    x_t, noise = forward_process.q_sample(device, x_0, t)
-                    predicted_noise = noise_model(x_t, t, text_embeds)
-                    loss = F.mse_loss(predicted_noise, noise)
+                vae.to(device)
+                latents = vae.encode(images).latent_dist.sample()
+                latents = latents * scaling_factor
+                x_0 = latents
+                t = torch.randint(
+                    0,
+                    forward_process.num_timesteps,
+                    (batch_size_actual,),
+                    device=device,
+                )
+                x_t, noise = forward_process.q_sample(device, x_0, t)
+                predicted_noise = noise_model(x_t, t, text_embeds)
+                loss = F.mse_loss(predicted_noise, noise)
                 val_loss += loss.item()
         avg_val_loss = val_loss / len(val_loader)
         wandb.log({"epoch": epoch, "val_loss": avg_val_loss})
@@ -536,8 +533,7 @@ def sample(
     x = torch.randn(n_samples, 4, 32, 32).to(device)
     for t in reversed(range(diffusion.num_timesteps)):
         t_tensor = torch.full((n_samples,), t, device=device, dtype=torch.long)
-        with autocast("cuda"):  # Updated API
-            predicted_noise = noise_model(x, t_tensor, text_embeds)
+        predicted_noise = noise_model(x, t_tensor, text_embeds)
         alpha = diffusion.alphas[t]
         alpha_cumprod = diffusion.alphas_cumprod[t]
         beta = diffusion.betas[t]
@@ -549,21 +545,20 @@ def sample(
             x - ((1 - alpha) / torch.sqrt(1 - alpha_cumprod)) * predicted_noise
         ) + torch.sqrt(beta) * noise
     with torch.no_grad():
-        with autocast("cuda"):  # Updated API
-            vae.to(device)
-            decoded = vae.decode(x / scaling_factor).sample
-            images = (decoded / 2 + 0.5).clamp(0, 1)
-            # Check for NaN/Inf in images
-            if torch.isnan(images).any() or torch.isinf(images).any():
-                logger.error("NaN or Inf detected in images tensor")
-                # Replace NaN/Inf with 0
-                images = torch.where(
-                    torch.logical_or(torch.isnan(images), torch.isinf(images)),
-                    torch.zeros_like(images),
-                    images,
-                )
-            # Ensure images is float32 for Matplotlib compatibility
-            images = images.to(torch.float32)
+        vae.to(device)
+        decoded = vae.decode(x / scaling_factor).sample
+        images = (decoded / 2 + 0.5).clamp(0, 1)
+        # Check for NaN/Inf in images
+        if torch.isnan(images).any() or torch.isinf(images).any():
+            logger.error("NaN or Inf detected in images tensor")
+            # Replace NaN/Inf with 0
+            images = torch.where(
+                torch.logical_or(torch.isnan(images), torch.isinf(images)),
+                torch.zeros_like(images),
+                images,
+            )
+        # Ensure images is float32 for Matplotlib compatibility
+        images = images.to(torch.float32)
     return images
 
 
@@ -616,8 +611,7 @@ def visualize_denoising_process(
     intermediates = []
     for t in reversed(range(diffusion.num_timesteps)):
         t_tensor = torch.full((n_samples,), t, device=device, dtype=torch.long)
-        with autocast("cuda"):  # Updated API
-            predicted_noise = model(x, t_tensor, text_embeds)
+        predicted_noise = model(x, t_tensor, text_embeds)
         alpha = diffusion.alphas[t]
         alpha_cumprod = diffusion.alphas_cumprod[t]
         beta = diffusion.betas[t]
@@ -630,11 +624,10 @@ def visualize_denoising_process(
         ) + torch.sqrt(beta) * noise
         if t % 100 == 0 or t == 0:
             with torch.no_grad():
-                with autocast("cuda"):  # Updated API
-                    vae.to(device)
-                    decoded = vae.decode(x / scaling_factor).sample
-                    img = (decoded / 2 + 0.5).clamp(0, 1)
-                    intermediates.append(img.clone())
+                vae.to(device)
+                decoded = vae.decode(x / scaling_factor).sample
+                img = (decoded / 2 + 0.5).clamp(0, 1)
+                intermediates.append(img.clone())
     for i, intermediate in enumerate(intermediates):
         step = diffusion.num_timesteps - i * 100
         visualize_samples(intermediate, f"Timestep {step}", prompts)
@@ -652,15 +645,6 @@ if __name__ == "__main__":
     )
     scaling_factor = vae.config.scaling_factor
     noise_model = NoiseModel(time_dim=768).to(device)
-    # Ensure all model parameters and buffers are on device
-    for name, param in noise_model.named_parameters():
-        if param.device != device:
-            logger.warning(f"Parameter {name} is on {param.device}, moving to {device}")
-            param.data = param.data.to(device)
-    for name, buffer in noise_model.named_buffers():
-        if buffer.device != device:
-            logger.warning(f"Buffer {name} is on {buffer.device}, moving to {device}")
-            buffer.data = buffer.data.to(device)
     noise_model = torch.compile(noise_model)
     forward_process = ForwardProcess()
     transform = transforms.Compose(
