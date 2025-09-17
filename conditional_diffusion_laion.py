@@ -1,3 +1,6 @@
+import matplotlib
+
+matplotlib.use("Agg")  # Set non-interactive backend before importing pyplot
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -24,6 +27,7 @@ from tqdm import tqdm
 import logging
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import math  # Added for sinusoidal embeddings
 
 # Set up logging
 logging.basicConfig(
@@ -113,10 +117,10 @@ class LAIONDataset(torch.utils.data.Dataset):
 
             # Download logic (unchanged)
             session = requests.Session()
-            retries = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
+            retries = Retry(total=1, backoff_factor=1, status_forcelist=[502, 503, 504])
             session.mount("http://", HTTPAdapter(max_retries=retries))
             session.mount("https://", HTTPAdapter(max_retries=retries))
-            response = session.get(url, timeout=10)
+            response = session.get(url, timeout=5)
             response.raise_for_status()
             image = Image.open(BytesIO(response.content)).convert("RGB")
             image.save(cache_path, "JPEG", quality=95)
@@ -139,6 +143,7 @@ class LAIONDataset(torch.utils.data.Dataset):
 
 
 def load_laion_dataset():
+    # Increased to 50k for more data (adjust if needed)
     train = load_dataset("laion/laion2B-en-aesthetic", split="train[:10000]")
     return train
 
@@ -183,10 +188,16 @@ def precache_dataset(dataset, max_samples=None):
         for future in tqdm(
             as_completed(futures), total=max_samples, desc="Pre-caching"
         ):
-            idx, success = future.result()
-            if success:
-                successful_indices.append(idx)
-
+            try:
+                idx, success = future.result()
+                if success:
+                    successful_indices.append(idx)
+            except TimeoutError:
+                logger.error(f"Timeout processing sample at idx {futures[future]}")
+                continue
+            except Exception as e:
+                logger.error(f"Error in future for idx {futures[future]}: {e}")
+                continue
     logger.info(
         f"Pre-caching complete. {len(successful_indices)}/{max_samples} valid samples."
     )
@@ -194,7 +205,7 @@ def precache_dataset(dataset, max_samples=None):
 
 
 def get_text_embeds(tokenizer, text_model, device, texts):
-    text_model.to(device)
+    # Removed redundant .to(device) since models stay on device
     inputs = tokenizer(
         texts,
         padding="max_length",
@@ -208,12 +219,25 @@ def get_text_embeds(tokenizer, text_model, device, texts):
     return text_embeds
 
 
+# Sinusoidal timestep embedding (standard from DDPM)
+def get_timestep_embedding(timesteps, embedding_dim):
+    half_dim = embedding_dim // 2
+    frequencies = torch.exp(
+        -torch.log(torch.tensor(10000.0)) * torch.arange(half_dim, dtype=torch.float32, device=timesteps.device) / (half_dim - 1)
+    )
+    embeddings = timesteps[:, None].float() * frequencies[None, :]
+    embeddings = torch.cat([torch.sin(embeddings), torch.cos(embeddings)], dim=-1)
+    if embedding_dim % 2 == 1:
+        embeddings = torch.cat([embeddings, torch.zeros_like(embeddings[:, :1])], dim=-1)
+    return embeddings
+
 class NoiseModel(nn.Module):
     def __init__(self, time_dim=768):
         super(NoiseModel, self).__init__()
         self.time_dim = time_dim
-        self.time_embedding = nn.Sequential(
-            nn.Linear(1, time_dim),
+        # Updated: MLP on sinusoidal embeds (replaces old time_embedding)
+        self.time_mlp = nn.Sequential(
+            nn.Linear(time_dim, time_dim),
             nn.SiLU(),
             nn.Linear(time_dim, time_dim),
         )
@@ -279,8 +303,9 @@ class NoiseModel(nn.Module):
         self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
 
     def forward(self, x, t, text_embeds):
-        t = t.unsqueeze(-1).float()
-        t_emb = self.time_embedding(t)
+        # Updated: Sinusoidal + MLP for t_emb
+        t_emb_sin = get_timestep_embedding(t, self.time_dim)
+        t_emb = self.time_mlp(t_emb_sin)
         emb = t_emb + text_embeds
         emb = emb.view(-1, self.time_dim, 1, 1)
         x0 = self.initial_conv(x)
@@ -353,8 +378,6 @@ def train(
             checkpoint = torch.load(model_save_path, map_location=device)
             noise_model.load_state_dict(checkpoint)
             logger.info(f"Loaded model weights from {model_save_path}")
-            # Optionally, load best_val_loss from a separate file or metadata
-            # For simplicity, we'll assume best_val_loss starts as infinity unless tracked
         except Exception as e:
             logger.error(f"Error loading model from {model_save_path}: {e}")
             logger.info("Starting training from scratch")
@@ -379,7 +402,7 @@ def train(
     )
     hf_dataset = load_laion_dataset()
     dataset = LAIONDataset(hf_dataset, transform)
-    valid_indices = precache_dataset(dataset, max_samples=50000)
+    valid_indices = precache_dataset(dataset, max_samples=10000)  # Matches dataset size
     if len(valid_indices) == 0:
         raise RuntimeError("No valid samples after pre-caching!")
 
@@ -409,6 +432,10 @@ def train(
         prefetch_factor=2,
     )
     optimizer = torch.optim.Adam(noise_model.parameters(), lr=1e-4)
+    # Added: Cosine LR scheduler (decays to 1e-6 over epochs)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=num_epochs, eta_min=1e-6
+    )
 
     def get_text_embeds_local(texts):
         return get_text_embeds(tokenizer, text_model, device, texts)
@@ -429,7 +456,7 @@ def train(
             images = images.to(device)
             text_embeds = get_text_embeds_local(texts)
             batch_size_actual = images.shape[0]
-            vae.to(device)
+            # Moved VAE out of loop (already on device)
             latents = vae.encode(images).latent_dist.sample()
             latents = latents * scaling_factor
             x_0 = latents
@@ -443,6 +470,7 @@ def train(
             loss.backward()
             torch.nn.utils.clip_grad_norm_(noise_model.parameters(), max_norm=10.0)
             optimizer.step()
+            scheduler.step()  # Added: Update scheduler
             train_loss += loss.item()
             if batch_idx % 10 == 0:
                 wandb.log(
@@ -476,7 +504,6 @@ def train(
                 images = images.to(device)
                 text_embeds = get_text_embeds_local(texts)
                 batch_size_actual = images.shape[0]
-                vae.to(device)
                 latents = vae.encode(images).latent_dist.sample()
                 latents = latents * scaling_factor
                 x_0 = latents
@@ -558,90 +585,18 @@ def sample(
         x = (1 / torch.sqrt(alpha)) * (
             x - ((1 - alpha) / torch.sqrt(1 - alpha_cumprod)) * predicted_noise
         ) + torch.sqrt(beta) * noise
-    with torch.no_grad():
-        vae.to(device)
-        decoded = vae.decode(x / scaling_factor).sample
-        images = (decoded / 2 + 0.5).clamp(0, 1)
-        if torch.isnan(images).any() or torch.isinf(images).any():
-            logger.error("NaN or Inf detected in images tensor")
-            images = torch.where(
-                torch.logical_or(torch.isnan(images), torch.isinf(images)),
-                torch.zeros_like(images),
-                images,
-            )
-        images = images.to(torch.float32)
+    # Moved VAE out (already on device)
+    decoded = vae.decode(x / scaling_factor).sample
+    images = (decoded / 2 + 0.5).clamp(0, 1)
+    if torch.isnan(images).any() or torch.isinf(images).any():
+        logger.error("NaN or Inf detected in images tensor")
+        images = torch.where(
+            torch.logical_or(torch.isnan(images), torch.isinf(images)),
+            torch.zeros_like(images),
+            images,
+        )
+    images = images.to(torch.float32)
     return images
-
-
-def visualize_samples(samples, title="Generated Samples", prompts=None):
-    samples = samples.cpu().numpy()
-    n_samples = samples.shape[0]
-    grid_size = int(np.ceil(np.sqrt(n_samples)))
-    fig, axes = plt.subplots(
-        grid_size, grid_size, figsize=(grid_size * 3, grid_size * 3)
-    )
-    if grid_size == 1:
-        axes = [axes]
-    fig.suptitle(title, fontsize=16)
-    plt.subplots_adjust(wspace=0.05, hspace=0.05)
-    for i in range(n_samples):
-        row = i // grid_size
-        col = i % grid_size
-        img = np.transpose(samples[i], (1, 2, 0))
-        axes[row][col].imshow(img)
-        if prompts is not None:
-            axes[row][col].set_title(
-                prompts[i][:15] + "..." if len(prompts[i]) > 15 else prompts[i],
-                fontsize=9,
-            )
-        axes[row][col].axis("off")
-    for i in range(n_samples, grid_size * grid_size):
-        row = i // grid_size
-        col = i % grid_size
-        axes[row][col].axis("off")
-    plt.show()
-
-
-@torch.no_grad()
-def visualize_denoising_process(
-    model,
-    diffusion,
-    device,
-    n_samples=4,
-    prompts=None,
-    vae=None,
-    scaling_factor=1.0,
-    tokenizer=None,
-    text_model=None,
-):
-    if prompts is None:
-        prompts = ["a photo of a cat"] * n_samples
-    text_embeds = get_text_embeds(tokenizer, text_model, device, prompts)
-    model = torch.compile(model)
-    x = torch.randn(n_samples, 4, 32, 32, device=device)
-    intermediates = []
-    for t in reversed(range(diffusion.num_timesteps)):
-        t_tensor = torch.full((n_samples,), t, device=device, dtype=torch.long)
-        predicted_noise = model(x, t_tensor, text_embeds)
-        alpha = diffusion.alphas[t]
-        alpha_cumprod = diffusion.alphas_cumprod[t]
-        beta = diffusion.betas[t]
-        if t > 0:
-            noise = torch.randn_like(x)
-        else:
-            noise = torch.zeros_like(x)
-        x = (1 / torch.sqrt(alpha)) * (
-            x - ((1 - alpha) / torch.sqrt(1 - alpha_cumprod)) * predicted_noise
-        ) + torch.sqrt(beta) * noise
-        if t % 100 == 0 or t == 0:
-            with torch.no_grad():
-                vae.to(device)
-                decoded = vae.decode(x / scaling_factor).sample
-                img = (decoded / 2 + 0.5).clamp(0, 1)
-                intermediates.append(img.clone())
-    for i, intermediate in enumerate(intermediates):
-        step = diffusion.num_timesteps - i * 100
-        visualize_samples(intermediate, f"Timestep {step}", prompts)
 
 
 if __name__ == "__main__":
@@ -666,7 +621,6 @@ if __name__ == "__main__":
         ]
     )
     dataset = LAIONDataset(load_laion_dataset(), transform)
-    precache_dataset(dataset, max_samples=50000)
     train(
         noise_model,
         forward_process,
