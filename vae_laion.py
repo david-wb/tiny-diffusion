@@ -20,6 +20,7 @@ import hashlib
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+
 # Configuration model using Pydantic
 class VAEConfig(BaseModel):
     latent_dim: int = 128
@@ -37,11 +38,13 @@ class VAEConfig(BaseModel):
     log_interval: int = 10
     beta: float = 1.0  # Added for β-VAE
 
+
 # Instantiate config
 config = VAEConfig()
 
 # Set random seed for reproducibility
 torch.manual_seed(42)
+
 
 # Self-Attention Layer
 class SelfAttention(nn.Module):
@@ -61,13 +64,18 @@ class SelfAttention(nn.Module):
         out = torch.bmm(value, attention.permute(0, 2, 1)).view(batch, C, H, W)
         return self.gamma * out + x
 
+
 # Residual Block with Spectral Normalization
 class ResidualBlock(nn.Module):
     def __init__(self, channels):
         super(ResidualBlock, self).__init__()
-        self.conv1 = nn.utils.spectral_norm(nn.Conv2d(channels, channels, 3, padding=1, bias=False))
+        self.conv1 = nn.utils.spectral_norm(
+            nn.Conv2d(channels, channels, 3, padding=1, bias=False)
+        )
         self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.utils.spectral_norm(nn.Conv2d(channels, channels, 3, padding=1, bias=False))
+        self.conv2 = nn.utils.spectral_norm(
+            nn.Conv2d(channels, channels, 3, padding=1, bias=False)
+        )
         self.bn2 = nn.BatchNorm2d(channels)
 
     def forward(self, x):
@@ -76,6 +84,7 @@ class ResidualBlock(nn.Module):
         x = self.bn2(self.conv2(x))
         return x + residual
 
+
 # VAE with Single Latent Variable
 class VAE(nn.Module):
     def __init__(self, config: VAEConfig):
@@ -83,61 +92,85 @@ class VAE(nn.Module):
         self.config = config
 
         # Encoder
-        self.encoder = nn.ModuleList([
-            nn.Sequential(
-                nn.utils.spectral_norm(nn.Conv2d(config.input_channels, 32, 4, stride=2, padding=1)),  # [batch, 32, 128, 128]
-                nn.ReLU(),
-                ResidualBlock(32),
-                SelfAttention(32)
-            ),
-            nn.Sequential(
-                nn.utils.spectral_norm(nn.Conv2d(32, 64, 4, stride=2, padding=1)),  # [batch, 64, 64, 64]
-                nn.ReLU(),
-                ResidualBlock(64),
-                SelfAttention(64)
-            ),
-            nn.Sequential(
-                nn.utils.spectral_norm(nn.Conv2d(64, 128, 4, stride=2, padding=1)),  # [batch, 128, 32, 32]
-                nn.ReLU(),
-                ResidualBlock(128)
-            ),
-            nn.Sequential(
-                nn.utils.spectral_norm(nn.Conv2d(128, 256, 4, stride=2, padding=1)),  # [batch, 256, 16, 16]
-                nn.ReLU(),
-                ResidualBlock(256)
-            )
-        ])
+        self.encoder = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.utils.spectral_norm(
+                        nn.Conv2d(config.input_channels, 32, 4, stride=2, padding=1)
+                    ),  # [batch, 32, 128, 128]
+                    nn.ReLU(),
+                    ResidualBlock(32),
+                    SelfAttention(32),
+                ),
+                nn.Sequential(
+                    nn.utils.spectral_norm(
+                        nn.Conv2d(32, 64, 4, stride=2, padding=1)
+                    ),  # [batch, 64, 64, 64]
+                    nn.ReLU(),
+                    ResidualBlock(64),
+                    SelfAttention(64),
+                ),
+                nn.Sequential(
+                    nn.utils.spectral_norm(
+                        nn.Conv2d(64, 128, 4, stride=2, padding=1)
+                    ),  # [batch, 128, 32, 32]
+                    nn.ReLU(),
+                    ResidualBlock(128),
+                ),
+                nn.Sequential(
+                    nn.utils.spectral_norm(
+                        nn.Conv2d(128, 256, 4, stride=2, padding=1)
+                    ),  # [batch, 256, 16, 16]
+                    nn.ReLU(),
+                    ResidualBlock(256),
+                ),
+            ]
+        )
         self.fc_mu = nn.Linear(256 * 16 * 16, config.latent_dim)
         self.fc_logvar = nn.Linear(256 * 16 * 16, config.latent_dim)
 
         # Decoder
         self.decoder_input = nn.Linear(config.latent_dim, 256 * 16 * 16)
-        self.decoder = nn.ModuleList([
-            nn.Sequential(
-                nn.utils.spectral_norm(nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1)),  # [batch, 128, 32, 32]
-                nn.ReLU(),
-                ResidualBlock(128),
-                SelfAttention(128)
-            ),
-            nn.Sequential(
-                nn.utils.spectral_norm(nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1)),  # [batch, 64, 64, 64]
-                nn.ReLU(),
-                ResidualBlock(64),
-                SelfAttention(64)
-            ),
-            nn.Sequential(
-                nn.utils.spectral_norm(nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1)),  # [batch, 32, 128, 128]
-                nn.ReLU(),
-                ResidualBlock(32)
-            ),
-            nn.Sequential(
-                nn.utils.spectral_norm(nn.ConvTranspose2d(32, config.input_channels, 4, stride=2, padding=1)),  # [batch, 3, 256, 256]
-                nn.Sigmoid()  # Output in [0, 1]
-            )
-        ])
+        self.decoder = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.utils.spectral_norm(
+                        nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1)
+                    ),  # [batch, 128, 32, 32]
+                    nn.ReLU(),
+                    ResidualBlock(128),
+                    SelfAttention(128),
+                ),
+                nn.Sequential(
+                    nn.utils.spectral_norm(
+                        nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1)
+                    ),  # [batch, 64, 64, 64]
+                    nn.ReLU(),
+                    ResidualBlock(64),
+                    SelfAttention(64),
+                ),
+                nn.Sequential(
+                    nn.utils.spectral_norm(
+                        nn.ConvTranspose2d(64, 32, 4, stride=2, padding=1)
+                    ),  # [batch, 32, 128, 128]
+                    nn.ReLU(),
+                    ResidualBlock(32),
+                ),
+                nn.Sequential(
+                    nn.utils.spectral_norm(
+                        nn.ConvTranspose2d(
+                            32, config.input_channels, 4, stride=2, padding=1
+                        )
+                    ),  # [batch, 3, 256, 256]
+                    nn.Sigmoid(),  # Output in [0, 1]
+                ),
+            ]
+        )
 
         # Perceptual loss network (pretrained VGG16)
-        vgg = vgg16(weights=VGG16_Weights.DEFAULT).features[:16].eval().to(config.device)
+        vgg = (
+            vgg16(weights=VGG16_Weights.DEFAULT).features[:16].eval().to(config.device)
+        )
         for param in vgg.parameters():
             param.requires_grad = False
         self.vgg = vgg
@@ -172,7 +205,7 @@ class VAE(nn.Module):
     def perceptual_loss(self, recon_x, x):
         recon_features = self.vgg(recon_x)
         target_features = self.vgg(x)
-        return F.mse_loss(recon_features, target_features, reduction='sum')
+        return F.mse_loss(recon_features, target_features, reduction="sum")
 
     def loss_function(self, recon_x, x, mu, logvar):
         # Reconstruction loss (BCE + Perceptual)
@@ -184,11 +217,18 @@ class VAE(nn.Module):
         kld = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
 
         # Log individual loss components for debugging
-        if torch.any(torch.isnan(bce_loss)) or torch.any(torch.isnan(perc_loss)) or torch.any(torch.isnan(kld)):
-            print(f"Loss components: BCE={bce_loss.item()}, Perceptual={perc_loss.item()}, KLD={kld.item()}")
+        if (
+            torch.any(torch.isnan(bce_loss))
+            or torch.any(torch.isnan(perc_loss))
+            or torch.any(torch.isnan(kld))
+        ):
+            print(
+                f"Loss components: BCE={bce_loss.item()}, Perceptual={perc_loss.item()}, KLD={kld.item()}"
+            )
 
         # Total loss with beta weighting
         return recon_loss + self.config.beta * kld
+
 
 # Custom dataset wrapper for LAION with local caching
 class LAIONDataset(torch.utils.data.Dataset):
@@ -263,10 +303,12 @@ class LAIONDataset(torch.utils.data.Dataset):
             self.save_failed_urls()
             return torch.zeros((3, config.image_size, config.image_size))
 
+
 # Load LAION dataset with download mode
 def load_laion_dataset():
     train = load_dataset("laion/laion2B-en-aesthetic", split="train[:10000]")
     return train
+
 
 # Define transforms for LAION images
 transform = transforms.Compose(
@@ -295,13 +337,16 @@ optimizer = optim.Adam(model.parameters(), lr=config.learning_rate)
 best_loss = float("inf")
 os.makedirs(config.checkpoint_dir, exist_ok=True)
 
+
 # Training loop
 def train(epoch):
     model.train()
     train_loss = 0
     for batch_idx, data in enumerate(train_loader):
         if torch.all(data == 0):
-            print(f"Batch {batch_idx} contains all-zero images, likely due to failed downloads.")
+            print(
+                f"Batch {batch_idx} contains all-zero images, likely due to failed downloads."
+            )
             continue  # Skip batches with all-zero images
         data = data.to(config.device)
         optimizer.zero_grad()
@@ -316,7 +361,9 @@ def train(epoch):
                 f"Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_dataset)}] "
                 f"({100. * batch_idx / len(train_loader):.0f}%)\tLoss: {loss.item() / len(data):.6f}"
             )
-            n_images = min(config.n_images_to_log, data.size(0))  # Use min of config and batch size
+            n_images = min(
+                config.n_images_to_log, data.size(0)
+            )  # Use min of config and batch size
             originals = (
                 data[:n_images].detach().cpu().permute(0, 2, 3, 1)
             )  # [batch, 3, 256, 256] -> [batch, 256, 256, 3]
@@ -348,6 +395,7 @@ def train(epoch):
     print(f"====> Epoch: {epoch} Average train loss: {avg_train_loss:.4f}")
     return avg_train_loss
 
+
 # Test function with image logging
 def test(epoch):
     global best_loss
@@ -356,14 +404,18 @@ def test(epoch):
     with torch.no_grad():
         for i, data in enumerate(train_loader):
             if torch.all(data == 0):
-                print(f"Test Batch {i} contains all-zero images, likely due to failed downloads.")
+                print(
+                    f"Test Batch {i} contains all-zero images, likely due to failed downloads."
+                )
                 continue  # Skip batches with all-zero images
             data = data.to(config.device)
             recon, mu, logvar = model(data)
             test_loss += model.loss_function(recon, data, mu, logvar).item()
 
             if i % config.log_interval == 0:
-                n_images = min(config.n_images_to_log, data.size(0))  # Use min of config and batch size
+                n_images = min(
+                    config.n_images_to_log, data.size(0)
+                )  # Use min of config and batch size
                 originals = (
                     data[:n_images].cpu().permute(0, 2, 3, 1)
                 )  # [batch, 3, 256, 256] -> [batch, 256, 256, 3]
@@ -408,6 +460,7 @@ def test(epoch):
 
     return avg_test_loss
 
+
 # Generate samples
 def generate_samples(n_samples=16):
     model.eval()
@@ -422,6 +475,7 @@ def generate_samples(n_samples=16):
             plt.axis("off")
         wandb.log({"generated_samples": wandb.Image(fig)})
         plt.close(fig)
+
 
 # Main execution
 if __name__ == "__main__":

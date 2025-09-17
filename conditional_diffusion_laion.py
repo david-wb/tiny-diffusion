@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, SubsetRandomSampler, Subset  # Add Subset
+from torch.utils.data import DataLoader, SubsetRandomSampler, Subset
 import torchvision
 from torchvision import transforms
 import numpy as np
@@ -82,7 +82,6 @@ class LAIONDataset(torch.utils.data.Dataset):
         text = sample["TEXT"]
         try:
             if url in self.failed_urls:
-                # logger.warning(f"Skipping cached failed URL: {url}")
                 raise ValueError("Failed URL (cached)")
 
             url_hash = hashlib.md5(url.encode("utf-8")).hexdigest()
@@ -101,7 +100,6 @@ class LAIONDataset(torch.utils.data.Dataset):
                     if image is not None:
                         if self.transform:
                             image_tensor = self.transform(image)
-                        # NEW: Defensive check for black images (e.g., corrupted cache)
                         if torch.allclose(
                             image_tensor, torch.zeros_like(image_tensor), atol=1e-5
                         ):
@@ -113,27 +111,31 @@ class LAIONDataset(torch.utils.data.Dataset):
                             raise ValueError("Black image in cache")
                         return image_tensor, text
 
-            # ... (download and save logic unchanged)
+            # Download logic (unchanged)
+            session = requests.Session()
+            retries = Retry(total=3, backoff_factor=1, status_forcelist=[502, 503, 504])
+            session.mount("http://", HTTPAdapter(max_retries=retries))
+            session.mount("https://", HTTPAdapter(max_retries=retries))
+            response = session.get(url, timeout=10)
+            response.raise_for_status()
+            image = Image.open(BytesIO(response.content)).convert("RGB")
+            image.save(cache_path, "JPEG", quality=95)
 
             if self.transform:
                 image_tensor = self.transform(image)
-            # NEW: Check for black image post-download/transform
             if torch.allclose(image_tensor, torch.zeros_like(image_tensor), atol=1e-5):
                 logger.warning(
                     f"Black image downloaded at idx {idx}, treating as failed"
                 )
-                os.remove(cache_path)  # Don't keep bad cache
+                os.remove(cache_path)
                 self.failed_urls.add(url)
                 self.save_failed_urls()
                 raise ValueError("Black image downloaded")
             return image_tensor, text
         except Exception as e:
-            logger.error(f"Error processing URL {url} at index {idx}: {e}")
             self.failed_urls.add(url)
             self.save_failed_urls()
-            raise ValueError(
-                "Sample processing failed"
-            )  # Changed to raise instead of return zero
+            raise ValueError("Sample processing failed")
 
 
 def load_laion_dataset():
@@ -142,7 +144,6 @@ def load_laion_dataset():
 
 
 def check_disk_space(path, required_space):
-    """Check if there is enough disk space for caching."""
     total, used, free = shutil.disk_usage(path)
     free_gb = free / (1024**3)
     required_gb = required_space / (1024**3)
@@ -160,21 +161,19 @@ def precache_dataset(dataset, max_samples=None):
     logger.info("Starting dataset pre-caching...")
     max_samples = max_samples or len(dataset)
     max_samples = min(max_samples, len(dataset))
-    required_space = max_samples * 250 * 1024  # ~250 KB per image
+    required_space = max_samples * 250 * 1024
     check_disk_space(config.image_cache_dir, required_space)
 
-    successful_indices = []  # NEW: Track valid indices
+    successful_indices = []
 
     def cache_sample(idx):
         try:
-            image, text = dataset[idx]  # This caches/loads
-            # NEW: Check for black/failed samples
+            image, text = dataset[idx]
             if text == "" or torch.all(image == 0):
                 logger.warning(f"Skipping invalid (black/empty) sample at idx {idx}")
                 return idx, False
             return idx, True
         except Exception as e:
-            logger.error(f"Failed to cache sample {idx}: {e}")
             return idx, False
 
     with ThreadPoolExecutor(max_workers=8) as executor:
@@ -186,12 +185,12 @@ def precache_dataset(dataset, max_samples=None):
         ):
             idx, success = future.result()
             if success:
-                successful_indices.append(idx)  # NEW: Only add valid
+                successful_indices.append(idx)
 
     logger.info(
         f"Pre-caching complete. {len(successful_indices)}/{max_samples} valid samples."
     )
-    return successful_indices  # NEW: Return valid indices
+    return successful_indices
 
 
 def get_text_embeds(tokenizer, text_model, device, texts):
@@ -202,14 +201,10 @@ def get_text_embeds(tokenizer, text_model, device, texts):
         max_length=tokenizer.model_max_length,
         truncation=True,
         return_tensors="pt",
-    ).to(
-        device
-    )  # Ensure inputs are on device
+    ).to(device)
     with torch.no_grad():
         outputs = text_model(inputs.input_ids)
-        text_embeds = outputs.last_hidden_state[:, -1, :].to(
-            device
-        )  # Ensure embeds stay on device
+        text_embeds = outputs.last_hidden_state[:, -1, :].to(device)
     return text_embeds
 
 
@@ -350,6 +345,20 @@ def train(
     batch_size: int = 8,
     model_save_path: str = "./best_model.pth",
 ):
+    # Initialize best_val_loss based on existing model
+    best_val_loss = float("inf")
+    start_epoch = 0
+    if os.path.exists(model_save_path):
+        try:
+            checkpoint = torch.load(model_save_path, map_location=device)
+            noise_model.load_state_dict(checkpoint)
+            logger.info(f"Loaded model weights from {model_save_path}")
+            # Optionally, load best_val_loss from a separate file or metadata
+            # For simplicity, we'll assume best_val_loss starts as infinity unless tracked
+        except Exception as e:
+            logger.error(f"Error loading model from {model_save_path}: {e}")
+            logger.info("Starting training from scratch")
+
     wandb.init(
         project="laion-diffusion-model",
         config={
@@ -370,23 +379,21 @@ def train(
     )
     hf_dataset = load_laion_dataset()
     dataset = LAIONDataset(hf_dataset, transform)
-    valid_indices = precache_dataset(
-        dataset, max_samples=50000
-    )  # NEW: Get valid indices
+    valid_indices = precache_dataset(dataset, max_samples=50000)
     if len(valid_indices) == 0:
         raise RuntimeError("No valid samples after pre-caching!")
 
-    subset_dataset = Subset(dataset, valid_indices)  # NEW: Filter to valid only
+    subset_dataset = Subset(dataset, valid_indices)
     logger.info(f"Using {len(subset_dataset)} valid samples for training.")
 
-    indices = list(range(len(subset_dataset)))  # NEW: Split relative to subset
+    indices = list(range(len(subset_dataset)))
     train_indices, val_indices = train_test_split(
         indices, test_size=0.2, random_state=42
     )
     train_sampler = SubsetRandomSampler(train_indices)
     val_sampler = SubsetRandomSampler(val_indices)
     train_loader = DataLoader(
-        subset_dataset,  # NEW: Use subset
+        subset_dataset,
         batch_size=batch_size,
         sampler=train_sampler,
         num_workers=4,
@@ -394,7 +401,7 @@ def train(
         prefetch_factor=2,
     )
     val_loader = DataLoader(
-        subset_dataset,  # NEW: Use subset
+        subset_dataset,
         batch_size=batch_size,
         sampler=val_sampler,
         num_workers=4,
@@ -402,7 +409,6 @@ def train(
         prefetch_factor=2,
     )
     optimizer = torch.optim.Adam(noise_model.parameters(), lr=1e-4)
-    best_val_loss = float("inf")
 
     def get_text_embeds_local(texts):
         return get_text_embeds(tokenizer, text_model, device, texts)
@@ -415,7 +421,8 @@ def train(
         "a photo of a cow",
     ]
     text_embeds_for_sample = get_text_embeds_local(prompts_for_sample)
-    for epoch in range(num_epochs):
+
+    for epoch in range(start_epoch, num_epochs):
         train_loss = 0.0
         for batch_idx, batch in enumerate(train_loader):
             images, texts = batch
@@ -427,23 +434,14 @@ def train(
             latents = latents * scaling_factor
             x_0 = latents
             t = torch.randint(
-                0,
-                forward_process.num_timesteps,
-                (batch_size_actual,),
-                device=device,
+                0, forward_process.num_timesteps, (batch_size_actual,), device=device
             )
             x_t, noise = forward_process.q_sample(device, x_0, t)
-            # Log device of tensors for debugging
-            logger.debug(
-                f"x_t device: {x_t.device}, t device: {t.device}, text_embeds device: {text_embeds.device}"
-            )
             predicted_noise = noise_model(x_t, t, text_embeds)
             loss = F.mse_loss(predicted_noise, noise)
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(
-                noise_model.parameters(), max_norm=10.0
-            )  # Add gradient clipping
+            torch.nn.utils.clip_grad_norm_(noise_model.parameters(), max_norm=10.0)
             optimizer.step()
             train_loss += loss.item()
             if batch_idx % 10 == 0:
@@ -456,13 +454,11 @@ def train(
                         noise_model,
                         forward_process,
                         device,
-                        text_embeds=text_embeds_for_sample,
+                        text_embeds=text_embeds,
                         vae=vae,
                         scaling_factor=scaling_factor,
                     )
-                    wandb_images = list(
-                        samples_to_wandb_images(samples, prompts_for_sample)
-                    )
+                    wandb_images = list(samples_to_wandb_images(samples, texts))
                     wandb.log(
                         {
                             "epoch": epoch,
@@ -499,7 +495,6 @@ def train(
         logger.info(
             f"Epoch {epoch}, Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}"
         )
-        torch.save(noise_model.state_dict(), f"model_epoch_{epoch}.pth")
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(noise_model.state_dict(), model_save_path)
@@ -514,17 +509,15 @@ def train(
             vae=vae,
             scaling_factor=scaling_factor,
         )
-        samples_grid = torchvision.utils.make_grid(samples, nrow=4)
         fig, axes = plt.subplots(2, 2, figsize=(16, 16))
         fig.suptitle(f"Generated Samples at Epoch {epoch}", fontsize=16)
         plt.subplots_adjust(wspace=0.1, hspace=0.3)
         for i, ax in enumerate(axes.flat):
-            if i < 16:
+            if i < len(samples):
                 img = np.transpose(samples[i].cpu().numpy(), (1, 2, 0))
                 ax.imshow(img)
                 ax.set_title(prompts_for_sample[i], fontsize=8)
                 ax.axis("off")
-        torchvision.utils.save_image(samples_grid, f"generated_epoch_{epoch}.png")
         wandb.log(
             {
                 "epoch": epoch,
@@ -548,12 +541,7 @@ def sample(
 ):
     if text_embeds is None:
         raise ValueError("Text embeddings must be provided for conditional generation.")
-
-    if text_embeds is not None:
-        n_samples = text_embeds.shape[0]
-    else:
-        n_samples = 1
-
+    n_samples = text_embeds.shape[0]
     noise_model.eval()
     noise_model = torch.compile(noise_model)
     x = torch.randn(n_samples, 4, 32, 32).to(device)
@@ -574,16 +562,13 @@ def sample(
         vae.to(device)
         decoded = vae.decode(x / scaling_factor).sample
         images = (decoded / 2 + 0.5).clamp(0, 1)
-        # Check for NaN/Inf in images
         if torch.isnan(images).any() or torch.isinf(images).any():
             logger.error("NaN or Inf detected in images tensor")
-            # Replace NaN/Inf with 0
             images = torch.where(
                 torch.logical_or(torch.isnan(images), torch.isinf(images)),
                 torch.zeros_like(images),
                 images,
             )
-        # Ensure images is float32 for Matplotlib compatibility
         images = images.to(torch.float32)
     return images
 

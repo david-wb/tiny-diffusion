@@ -15,6 +15,7 @@ class NoiseModel(nn.Module):
     """
     UNet to predict the noise given x_t, t, and class label y.
     """
+
     def __init__(self, time_dim=256, num_classes=10):
         super(NoiseModel, self).__init__()
 
@@ -207,12 +208,15 @@ def train(
     model_save_path: str = "./best_model.pth",
 ):
     # Initialize wandb
-    wandb.init(project="conditional-diffusion-mnist", config={
-        "num_epochs": num_epochs,
-        "batch_size": batch_size,
-        "num_timesteps": forward_process.num_timesteps,
-        "learning_rate": 1e-3,
-    })
+    wandb.init(
+        project="conditional-diffusion-mnist",
+        config={
+            "num_epochs": num_epochs,
+            "batch_size": batch_size,
+            "num_timesteps": forward_process.num_timesteps,
+            "learning_rate": 1e-3,
+        },
+    )
 
     # Load MNIST dataset
     transform = transforms.Compose(
@@ -260,7 +264,9 @@ def train(
 
             train_loss += loss.item()
             if batch_idx % 100 == 0:
-                print(f"Epoch {epoch}, Batch {batch_idx}, Train Loss: {loss.item():.4f}")
+                print(
+                    f"Epoch {epoch}, Batch {batch_idx}, Train Loss: {loss.item():.4f}"
+                )
 
         avg_train_loss = train_loss / len(train_loader)
         wandb.log({"epoch": epoch, "train_loss": avg_train_loss})
@@ -284,13 +290,17 @@ def train(
 
         avg_val_loss = val_loss / len(val_loader)
         wandb.log({"epoch": epoch, "val_loss": avg_val_loss})
-        print(f"Epoch {epoch}, Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}")
+        print(
+            f"Epoch {epoch}, Avg Train Loss: {avg_train_loss:.4f}, Avg Val Loss: {avg_val_loss:.4f}"
+        )
 
         # Save best model
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(noise_model.state_dict(), model_save_path)
-            print(f"Saved best model at epoch {epoch} with val loss: {best_val_loss:.4f}")
+            print(
+                f"Saved best model at epoch {epoch} with val loss: {best_val_loss:.4f}"
+            )
 
         # Generate samples with labels
         y_sample = torch.randint(0, 10, (16,), device=device)
@@ -302,7 +312,9 @@ def train(
         # Create figure with labels
         n_samples = samples.shape[0]
         grid_size = int(np.ceil(np.sqrt(n_samples)))
-        fig, axes = plt.subplots(grid_size, grid_size, figsize=(grid_size * 2, grid_size * 2))
+        fig, axes = plt.subplots(
+            grid_size, grid_size, figsize=(grid_size * 2, grid_size * 2)
+        )
         fig.suptitle(f"Generated Samples at Epoch {epoch}", fontsize=16)
         plt.subplots_adjust(wspace=0.1, hspace=0.3)  # Adjust hspace for label space
 
@@ -326,19 +338,27 @@ def train(
         torchvision.utils.save_image(samples_grid, f"generated_mnist_epoch_{epoch}.png")
 
         # Log to wandb
-        wandb.log({
-            "epoch": epoch,
-            "samples": wandb.Image(fig, caption=f"Generated samples at epoch {epoch}")
-        })
+        wandb.log(
+            {
+                "epoch": epoch,
+                "samples": wandb.Image(
+                    fig, caption=f"Generated samples at epoch {epoch}"
+                ),
+            }
+        )
         plt.close(fig)
 
         noise_model.train()
 
 
 @torch.no_grad()
-def sample(noise_model: NoiseModel, diffusion: ForwardProcess, device, n_samples=16, y=None):
+def sample(
+    noise_model: NoiseModel, diffusion: ForwardProcess, device, n_samples=16, y=None
+):
     if y is None:
-        raise ValueError("Class labels 'y' must be provided for conditional generation.")
+        raise ValueError(
+            "Class labels 'y' must be provided for conditional generation."
+        )
     if y.shape[0] != n_samples:
         raise ValueError("y must have shape (n_samples,)")
 
@@ -401,7 +421,7 @@ def visualize_samples(samples, title="Generated MNIST Samples", labels=None):
 def visualize_denoising_process(model, diffusion, device, n_samples=4, y=None):
     if y is None:
         y = torch.randint(0, 10, (n_samples,), device=device)
-    
+
     x = torch.randn(n_samples, 1, 28, 28).to(device)
     y = y.to(device)
     intermediates = []
@@ -427,19 +447,29 @@ def visualize_denoising_process(model, diffusion, device, n_samples=4, y=None):
 
     for i, intermediate in enumerate(intermediates):
         intermediate = (intermediate + 1) / 2
-        visualize_samples(intermediate, f"Timestep {diffusion.num_timesteps - i*100}", labels=y.cpu().numpy())
+        visualize_samples(
+            intermediate,
+            f"Timestep {diffusion.num_timesteps - i*100}",
+            labels=y.cpu().numpy(),
+        )
 
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"device: {device}")
-    
+
     # Initialize models
     noise_model = NoiseModel(num_classes=10).to(device)
     forward_process = ForwardProcess()
 
     # Train with model saving and wandb logging
-    train(noise_model, forward_process, device, num_epochs=100, model_save_path="best_model.pth")
+    train(
+        noise_model,
+        forward_process,
+        device,
+        num_epochs=100,
+        model_save_path="best_model.pth",
+    )
 
     # Generate and visualize samples for a specific digit (e.g., digit 7)
     y_gen = torch.full((16,), 7, device=device)
@@ -449,5 +479,7 @@ if __name__ == "__main__":
 
     # Log final samples to wandb
     samples_grid = torchvision.utils.make_grid(samples, nrow=4, normalize=True)
-    wandb.log({"final_samples": wandb.Image(samples_grid, caption="Final Generated Digit 7")})
+    wandb.log(
+        {"final_samples": wandb.Image(samples_grid, caption="Final Generated Digit 7")}
+    )
     wandb.finish()
